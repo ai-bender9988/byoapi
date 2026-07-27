@@ -1,0 +1,1 @@
+Paste your kie.ai API key here and rename this file to kie_key.txt

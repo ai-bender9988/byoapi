@@ -1,0 +1,18 @@
+# Secrets — never commit these
+kie_key.txt
+xai_key.txt
+proxy_token.txt
+
+# Local runtime data / generated content
+outputs/
+characters/
+stories.json
+comfyui_config.json
+app_config.json
+assistant_prompts_override.json
+cost_totals.json
+
+# Python / editor cruft
+__pycache__/
+*.pyc
+.claude/

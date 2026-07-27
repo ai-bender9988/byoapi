@@ -1,0 +1,1 @@
+Optional — only needed if you use the "Direct xAI API" Grok backend (Options panel > Grok backend). Paste your xAI API key here (from console.x.ai) and rename this file to xai_key.txt
