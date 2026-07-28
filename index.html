@@ -3488,7 +3488,8 @@ function buildStorySceneCardHtml(scene, idx) {
         <summary>Details (prompt, continuity, last sent)</summary>
         <textarea class="story-scene-prompt" data-story-scene-prompt-index="${idx}" rows="3">${escapeHtml(scene.image_prompt)}</textarea>
         <div class="story-scene-rewrite-row">
-          <button class="secondary-btn story-scene-rewrite-btn" data-story-scene-index="${idx}" type="button">&#128256; Rewrite for ${storyImageEngineEl.value === "grok-imagine" ? "Grok Imagine" : "Seedream"}</button>
+          <button class="secondary-btn story-scene-rewrite-btn" data-story-scene-index="${idx}" data-story-scene-rewrite-target="grok-imagine" type="button">&#128256; Rewrite for Grok Imagine</button>
+          <button class="secondary-btn story-scene-rewrite-btn" data-story-scene-index="${idx}" data-story-scene-rewrite-target="seedream-5-pro" type="button">&#128256; Rewrite for Seedream</button>
           <span class="hint" data-story-scene-rewrite-status="${idx}"></span>
         </div>
         ${continuityCheckbox}
@@ -3604,16 +3605,7 @@ storyScenesEl.addEventListener("click", (e) => {
   const videoBtn = e.target.closest(".story-scene-video-btn");
   if (videoBtn) { generateSceneVideo(Number(videoBtn.dataset.storySceneIndex)); return; }
   const rewriteBtn = e.target.closest(".story-scene-rewrite-btn");
-  if (rewriteBtn) rewriteSceneImagePrompt(Number(rewriteBtn.dataset.storySceneIndex));
-});
-
-// Keeps every scene card's "🔀 Rewrite for ..." button label in sync with
-// the "Image engine" selector the moment it changes, instead of only on the
-// next unrelated re-render — per-card via updateStorySceneCardDom() (not a
-// full renderStoryScenes()) so it doesn't collapse any open "Details"
-// sections while doing it.
-storyImageEngineEl.addEventListener("change", () => {
-  storyScenes.forEach((_, idx) => updateStorySceneCardDom(idx));
+  if (rewriteBtn) rewriteSceneImagePrompt(Number(rewriteBtn.dataset.storySceneIndex), rewriteBtn.dataset.storySceneRewriteTarget);
 });
 
 // <video>'s "error" event doesn't bubble, so this has to listen on the
@@ -3843,20 +3835,22 @@ async function generateSceneVideo(sceneIndex) {
   }
 }
 
-// "🔀 Rewrite for ..." button in a scene's Details section — converts the
-// scene's existing image_prompt into whichever style matches the currently
-// selected "Image engine" (Seedream <-> Grok Imagine), via
-// story_scene_grok_convert/story_scene_seedream_convert (proxy.py). This is
-// a REWRITE, not a regenerate-from-scratch — same scene content, same
-// "Character A"/"Character B" labels, just different prose. Useful any time
-// you switch engines on an already-written story (or just want to try
-// converting one scene) without regenerating the whole thing. The button's
-// label/target always follows the engine selector, so switching it and
-// clicking again converts the other direction just as easily.
-async function rewriteSceneImagePrompt(sceneIndex) {
+// "🔀 Rewrite for Grok Imagine" / "🔀 Rewrite for Seedream" buttons in a
+// scene's Details section — converts the scene's existing image_prompt into
+// the clicked button's style, via story_scene_grok_convert/
+// story_scene_seedream_convert (proxy.py). This is a REWRITE, not a
+// regenerate-from-scratch — same scene content, same "Character A"/
+// "Character B" labels, just different prose. Both buttons are always shown
+// regardless of the "Image engine" selector above the scene grid — that
+// selector only controls what a fresh "Generate image" click uses, so tying
+// this button's target to it too meant right after generating a story with
+// Seedream still selected, the only button offered was "Rewrite for
+// Seedream" (a no-op, since that's already the current style) — the one
+// you'd actually want (Grok Imagine) required first going back up to change
+// the selector. Showing both explicitly sidesteps that entirely.
+async function rewriteSceneImagePrompt(sceneIndex, targetEngine) {
   const scene = storyScenes[sceneIndex];
   if (!scene) return;
-  const targetEngine = storyImageEngineEl.value; // "seedream-5-pro" | "grok-imagine"
   const targetLabel = targetEngine === "grok-imagine" ? "Grok Imagine" : "Seedream";
   const statusEl = document.querySelector(`[data-story-scene-rewrite-status="${sceneIndex}"]`);
   if (statusEl) statusEl.textContent = `Rewriting for ${targetLabel}...`;

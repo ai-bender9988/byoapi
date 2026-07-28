@@ -1077,17 +1077,21 @@ further below for why that was removed).
    "↺ Reuse" and the gallery both work on it) — click "↺ Regenerate
    image" to try again with a tweaked prompt.
 
-   **"🔀 Rewrite for ..."** (in a scene's "Details" section, next to the
-   editable prompt textarea) converts that one scene's existing
-   `image_prompt` into whichever style the "Image engine" selector is
-   currently set to — the button's label and target always follow that
-   selector, so switching it between Seedream and Grok Imagine and
-   clicking again converts the other direction just as easily. This
-   works without regenerating the story or touching any other scene —
-   useful for a scene written in the wrong style (e.g. a story started
-   under Seedream, now being tried with Grok Imagine, or vice versa), or
-   just to try converting one scene without switching the whole story
-   over. It's a REWRITE, not a fresh rewrite-from-scratch: it sends Grok
+   **"🔀 Rewrite for Grok Imagine" / "🔀 Rewrite for Seedream"** (in a
+   scene's "Details" section, next to the editable prompt textarea)
+   convert that one scene's existing `image_prompt` into the clicked
+   button's style. Both are always shown, regardless of what the
+   "Image engine" selector above the scene grid is currently set to —
+   that selector only controls what a fresh "Generate image" click
+   uses, so tying this button's target to it too would mean right after
+   generating a story with Seedream still selected, the only option
+   offered is "Rewrite for Seedream" (a no-op, since that's already the
+   current style); showing both explicitly sidesteps that. This works
+   without regenerating the story or touching any other scene — useful
+   for a scene written in the wrong style (e.g. a story started under
+   Seedream, now being tried with Grok Imagine, or vice versa), or just
+   to try converting one scene without switching the whole story over.
+   It's a REWRITE, not a fresh rewrite-from-scratch: it sends Grok
    the story's title/synopsis, this scene's narration, which exact
    "Character X" label belongs to which named character (so it never
    invents a new one), the previous scene's actual image when there is
