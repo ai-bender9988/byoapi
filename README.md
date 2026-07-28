@@ -256,7 +256,7 @@ estimate) opens a settings panel, persisted server-side
   and the relevant scene's video job card — so you always know which
   backend actually produced what you're looking at.
 - **Grok prompts**: every system prompt this app sends to Grok, all
-  twelve, each collapsed behind a clearly-labeled summary so it's
+  thirteen, each collapsed behind a clearly-labeled summary so it's
   unambiguous which is which:
 
   | Label in the Options panel | `proxy.py` constant | Used by |
@@ -272,7 +272,8 @@ estimate) opens a settings panel, persisted server-side
   | Story tab — Scene generation | `STORY_SYSTEM` | The shot-list writer behind "Generate story" |
   | Story tab — Scene video motion | `STORY_LTX_MOTION_SYSTEM` | Per-scene "Generate video" when the LTX engine is picked |
   | Story tab — Scene video motion (Grok Imagine Video) | `GROK_IMAGE_VIDEO_MOTION_SYSTEM` | Per-scene "Generate video" when the Grok Imagine Video engine is picked |
-  | Story tab — "Rewrite for Grok Imagine" | `GROK_IMAGE_STORY_SCENE_CONVERT_SYSTEM` | Per-scene image-prompt style conversion button (section 8a) |
+  | Story tab — "Rewrite for ..." → Grok Imagine style | `GROK_IMAGE_STORY_SCENE_CONVERT_SYSTEM` | Per-scene image-prompt style conversion button (section 8a) |
+  | Story tab — "Rewrite for ..." → Seedream style | `SEEDREAM_STORY_SCENE_CONVERT_SYSTEM` | Same button, converting the other direction |
 
   This is the same override/reset mechanism, the same
   `assistant_prompts_override.json` file, and the exact same
@@ -1076,25 +1077,28 @@ further below for why that was removed).
    "↺ Reuse" and the gallery both work on it) — click "↺ Regenerate
    image" to try again with a tweaked prompt.
 
-   **"🔀 Rewrite for Grok Imagine"** (in a scene's "Details" section,
-   next to the editable prompt textarea) converts that one scene's
-   existing `image_prompt` into Grok Imagine's style on demand, without
-   regenerating the story or touching any other scene — useful for a
-   story written back when "Image engine" was still set to Seedream (or
-   before this per-scene option existed at all), or just to try
-   converting a single scene without switching the whole story over.
-   This is a REWRITE, not a fresh rewrite-from-scratch: it sends Grok
+   **"🔀 Rewrite for ..."** (in a scene's "Details" section, next to the
+   editable prompt textarea) converts that one scene's existing
+   `image_prompt` into whichever style the "Image engine" selector is
+   currently set to — the button's label and target always follow that
+   selector, so switching it between Seedream and Grok Imagine and
+   clicking again converts the other direction just as easily. This
+   works without regenerating the story or touching any other scene —
+   useful for a scene written in the wrong style (e.g. a story started
+   under Seedream, now being tried with Grok Imagine, or vice versa), or
+   just to try converting one scene without switching the whole story
+   over. It's a REWRITE, not a fresh rewrite-from-scratch: it sends Grok
    the story's title/synopsis, this scene's narration, which exact
    "Character X" label belongs to which named character (so it never
    invents a new one), the previous scene's actual image when there is
    one (for continuity awareness only, never described in the output),
    and the existing prompt text — and is instructed to preserve the
    scene's content and every "Character X" label exactly, changing only
-   the prose style (`GROK_IMAGE_STORY_SCENE_CONVERT_SYSTEM` in
-   `proxy.py`). The rewritten text replaces the textarea's contents
-   directly; nothing is generated automatically — review it and click
-   "Generate image" (with "Image engine" set to Grok Imagine) yourself
-   when it looks right.
+   the prose style (`GROK_IMAGE_STORY_SCENE_CONVERT_SYSTEM`/
+   `SEEDREAM_STORY_SCENE_CONVERT_SYSTEM` in `proxy.py`, sharing every
+   rule except which style to convert into). The rewritten text replaces
+   the textarea's contents directly; nothing is generated automatically
+   — review it and click "Generate image" yourself when it looks right.
 
    **"▶ Generate all scenes"** (below the scene list) generates every
    scene in order, one at a time, waiting for each one to actually

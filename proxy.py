@@ -888,58 +888,63 @@ STORY_SYSTEM = (
     "paragraph on this above; always false for scene 1)."
 )
 
-# Story tab's per-scene "🔀 Rewrite for Grok Imagine" button — a REWRITE
-# task, not a fresh-generation one: converts a scene's existing image_prompt
-# (as originally written by STORY_SYSTEM, in whichever style was active at
-# the time — often Seedream's exhaustive style, from before this scene's
-# engine was switched, or from before this per-scene override existed at
-# all) into Grok Imagine's punchier style, without changing what the scene
-# actually depicts or touching its "Character A"/"Character B" labels —
-# those still have to survive the rewrite untouched, since
-# attachCharacterReferences() (index.html) substitutes real identity text
-# for them later based on their exact wording, the same mechanism regardless
-# of which engine ends up rendering the scene.
-GROK_IMAGE_STORY_SCENE_CONVERT_SYSTEM = (
-    "You are rewriting one scene's existing image-generation prompt from a "
-    "different model's style into Grok Imagine's style — NOT writing a new "
-    "scene from scratch. The scene's content (who's in it, what they're "
-    "doing, the setting, the mood) must come through in your rewrite "
-    "exactly as before; only the STYLE of the prose changes.\n\n"
-    "## The style to convert INTO\n"
-    + _STORY_IMAGE_STYLE_GROK_IMAGINE
-    + "\n\n"
-    "## Hard Constraints\n"
-    "- If the existing prompt contains \"Character A\", \"Character B\", "
-    "etc., keep every one of those labels in your rewrite, worded exactly "
-    "the same (\"Character A\", never a name or pronoun) — a separate tool "
-    "substitutes each one for that character's real identity text right "
-    "before generation, keyed off that exact wording, so changing it breaks "
-    "that substitution. You may move where in the sentence a label appears, "
-    "just never rename or drop one that's actually present in the scene.\n"
-    "- Do not invent new characters, actions, or settings not already "
-    "implied by the existing prompt, the scene narration, or the story "
-    "context you're given — this is a style pass, not a rewrite of the "
-    "story itself.\n"
-    "- Do not write out any character's physical appearance yourself, even "
-    "briefly — same rule as the tool that originally wrote this prompt: "
-    "identity text is injected automatically from each \"Character X\" "
-    "label, so adding your own description would just duplicate or "
-    "conflict with it.\n"
-    "- Never reference the video aspect (camera movement, motion, "
-    "duration) — this describes a single still frame; motion is handled in "
-    "a later step, not by you.\n\n"
-    "## Context You'll Be Given\n"
-    "The story's title/synopsis, this scene's narration, which exact "
-    "\"Character X\" label (if any) belongs to which named character in "
-    "this scene (so you know they're valid and already assigned — never "
-    "invent a new one), and the existing prompt to convert. You may also be "
-    "shown the previous scene's actual generated image, when there is one "
-    "— that's for your own continuity awareness only (recognizing "
-    "environment/mood carrying over), never something to describe in the "
-    "output; the actual continuity-reference mechanism is handled "
-    "separately by the tool, same as identity substitution above."
-    + _SINGLE_SHOT_ADAPTATION
-)
+# Story tab's per-scene "🔀 Rewrite for ..." button — a REWRITE task, not a
+# fresh-generation one: converts a scene's existing image_prompt into
+# whichever style matches the currently-selected "Image engine" (Seedream or
+# Grok Imagine), without changing what the scene actually depicts or
+# touching its "Character A"/"Character B" labels — those still have to
+# survive the rewrite untouched, since attachCharacterReferences()
+# (index.html) substitutes real identity text for them later based on their
+# exact wording, the same mechanism regardless of which engine ends up
+# rendering the scene. Works in both directions (the button always targets
+# whichever engine is currently selected) since the two style constants
+# below share every rule except "which style to convert into."
+def _build_story_scene_convert_system(style_block: str) -> str:
+    return (
+        "You are rewriting one scene's existing image-generation prompt from "
+        "a different model's style into the target style below — NOT "
+        "writing a new scene from scratch. The scene's content (who's in "
+        "it, what they're doing, the setting, the mood) must come through "
+        "in your rewrite exactly as before; only the STYLE of the prose "
+        "changes.\n\n"
+        "## The style to convert INTO\n"
+        + style_block
+        + "\n\n"
+        "## Hard Constraints\n"
+        "- If the existing prompt contains \"Character A\", \"Character B\", "
+        "etc., keep every one of those labels in your rewrite, worded exactly "
+        "the same (\"Character A\", never a name or pronoun) — a separate tool "
+        "substitutes each one for that character's real identity text right "
+        "before generation, keyed off that exact wording, so changing it breaks "
+        "that substitution. You may move where in the sentence a label appears, "
+        "just never rename or drop one that's actually present in the scene.\n"
+        "- Do not invent new characters, actions, or settings not already "
+        "implied by the existing prompt, the scene narration, or the story "
+        "context you're given — this is a style pass, not a rewrite of the "
+        "story itself.\n"
+        "- Do not write out any character's physical appearance yourself, even "
+        "briefly — same rule as the tool that originally wrote this prompt: "
+        "identity text is injected automatically from each \"Character X\" "
+        "label, so adding your own description would just duplicate or "
+        "conflict with it.\n"
+        "- Never reference the video aspect (camera movement, motion, "
+        "duration) — this describes a single still frame; motion is handled in "
+        "a later step, not by you.\n\n"
+        "## Context You'll Be Given\n"
+        "The story's title/synopsis, this scene's narration, which exact "
+        "\"Character X\" label (if any) belongs to which named character in "
+        "this scene (so you know they're valid and already assigned — never "
+        "invent a new one), and the existing prompt to convert. You may also be "
+        "shown the previous scene's actual generated image, when there is one "
+        "— that's for your own continuity awareness only (recognizing "
+        "environment/mood carrying over), never something to describe in the "
+        "output; the actual continuity-reference mechanism is handled "
+        "separately by the tool, same as identity substitution above."
+        + _SINGLE_SHOT_ADAPTATION
+    )
+
+GROK_IMAGE_STORY_SCENE_CONVERT_SYSTEM = _build_story_scene_convert_system(_STORY_IMAGE_STYLE_GROK_IMAGINE)
+SEEDREAM_STORY_SCENE_CONVERT_SYSTEM = _build_story_scene_convert_system(_STORY_IMAGE_STYLE_SEEDREAM)
 
 # Shared by STORY_LTX_MOTION_SYSTEM and VIDEO_LTX_MOTION_SYSTEM below (see
 # each for where they're used) — every rule about HOW to write a good LTX
@@ -1482,6 +1487,7 @@ DEFAULT_ASSISTANT_SYSTEM_PROMPTS = {
     "story_video_ltx": STORY_LTX_MOTION_SYSTEM,
     "story_video_grok_imagine": GROK_IMAGE_VIDEO_MOTION_SYSTEM,
     "story_scene_grok_convert": GROK_IMAGE_STORY_SCENE_CONVERT_SYSTEM,
+    "story_scene_seedream_convert": SEEDREAM_STORY_SCENE_CONVERT_SYSTEM,
 }
 
 
@@ -3095,13 +3101,13 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/api/rewrite-story-scene-prompt":
-            # Story tab's per-scene "🔀 Rewrite for Grok Imagine" button — a
-            # style REWRITE of an already-written scene image_prompt (see
-            # GROK_IMAGE_STORY_SCENE_CONVERT_SYSTEM's own long comment for
-            # why this can't just be a fresh generate_story_with_grok() call:
-            # it must preserve the scene's actual content and its
-            # "Character A"/"Character B" labels exactly, not reimagine the
-            # scene).
+            # Story tab's per-scene "🔀 Rewrite for ..." button — a style
+            # REWRITE of an already-written scene image_prompt (see
+            # _build_story_scene_convert_system()'s own long comment for why
+            # this can't just be a fresh generate_story_with_grok() call: it
+            # must preserve the scene's actual content and its "Character
+            # A"/"Character B" labels exactly, not reimagine the scene).
+            # Works in both directions — targetEngine picks which style.
             try:
                 body = self._read_json_body()
                 current_prompt = (body.get("currentPrompt") or "").strip()
@@ -3110,6 +3116,8 @@ class Handler(BaseHTTPRequestHandler):
                 narration = (body.get("narration") or "").strip()
                 story_title = (body.get("storyTitle") or "").strip()
                 story_synopsis = (body.get("storySynopsis") or "").strip()
+                target_engine = (body.get("targetEngine") or "grok-imagine").strip()
+                style_label = "Grok Imagine's" if target_engine == "grok-imagine" else "Seedream's"
                 # [{"label": "Character A", "name": "Mira"}, ...] — built
                 # client-side from the same global character-letter mapping
                 # used everywhere else in the Story tab, so Grok is told
@@ -3127,7 +3135,7 @@ class Handler(BaseHTTPRequestHandler):
                     labels_text = "; ".join(f"{c.get('label')} = {c.get('name')}" for c in character_labels if c.get("label") and c.get("name"))
                     if labels_text:
                         brief_parts.append(f"Characters already assigned in this scene (keep these exact labels): {labels_text}")
-                brief_parts.append(f"Existing prompt to convert to Grok Imagine's style:\n{current_prompt}")
+                brief_parts.append(f"Existing prompt to convert to {style_label} style:\n{current_prompt}")
                 brief = "\n".join(brief_parts)
 
                 image_data_urls = []
@@ -3137,7 +3145,8 @@ class Handler(BaseHTTPRequestHandler):
                     except Exception:
                         pass  # continuity image is a nice-to-have here, not required — proceed without it
 
-                system_prompt = get_system_prompt_for_mode("story_scene_grok_convert")
+                mode = "story_scene_grok_convert" if target_engine == "grok-imagine" else "story_scene_seedream_convert"
+                system_prompt = get_system_prompt_for_mode(mode)
                 grok_cfg = load_app_config()
                 prompt_text, _negative_prompt, reasoning, model_used, used_fallback = generate_prompt_with_grok(
                     brief, system_prompt, api_key, image_data_urls, [],
