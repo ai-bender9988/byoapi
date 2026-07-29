@@ -60,8 +60,10 @@ No `git` command needed:
 3. Extract the downloaded ZIP file somewhere on your computer — on
    Windows, right-click it and choose **"Extract All..."**; on Mac,
    just double-click it. The extracted folder (containing `proxy.py`,
-   `index.html`, and everything else) is your project folder — that's
-   what the rest of these steps mean by "the project folder."
+   `index.html`, `run.bat`, and everything else) is your project
+   folder — that's what the rest of these steps mean by "the project
+   folder." On Windows, `run.bat` is the file you'll double-click in
+   step 4 to actually start the app.
 
 ---
 
