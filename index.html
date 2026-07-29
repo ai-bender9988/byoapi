@@ -1450,6 +1450,7 @@
             <option value="21:9">21:9 (ultra-wide)</option>
           </select>
         </div>
+        <div id="image-aspect-hint" class="hint" style="display:none;">With a single reference image, Grok Imagine's image editing ignores aspect ratio — the output matches that image's own size. Attach a 2nd image to pick one.</div>
         <div id="quality-wrap">
           <label id="quality-label">Resolution</label>
           <select id="quality">
@@ -1764,8 +1765,13 @@ const VIDEO_MODELS = {
     // attached here, never uses Grok Imagine's own text-to-image
     // task_id/index chaining), duration 6-30s in 1s steps, resolution
     // 480p/720p (locked to 480p here, matching the fixed-tier pattern the
-    // Seedance models use), aspect_ratio (only actually applies in
-    // multi-image mode per the docs, harmless to always send). No audio
+    // Seedance models use), aspect_ratio — a strict enum ("1:1"/"16:9"/
+    // "9:16"/"3:2"/"2:3" only; NOT the wider set this app's own aspect-ratio
+    // selectors offer — see GROK_IMAGINE_VIDEO_ASPECT_RATIOS/
+    // closestAspectRatioFrom(), used in createTaskForJob() to clamp to a
+    // valid value instead of sending an unsupported one like "4:3" straight
+    // through), only actually applied server-side in multi-image mode per
+    // the docs (single-image mode follows the image's own size). No audio
     // field is documented for this endpoint.
     apiModel: "grok-imagine/image-to-video",
     imageMode: "required", // image_urls or task_id required; this app never supplies task_id
@@ -1994,6 +2000,7 @@ const thumbGrid = document.getElementById("thumb-grid");
 const imageCountEl = document.getElementById("image-count");
 const imageModelSelect = document.getElementById("image-model-select");
 const imageAspectWrap = document.getElementById("image-aspect-wrap");
+const imageAspectHintEl = document.getElementById("image-aspect-hint");
 const promptEl = document.getElementById("prompt");
 const aspectRatioEl = document.getElementById("aspect-ratio");
 const qualityEl = document.getElementById("quality");
@@ -2089,6 +2096,27 @@ const ASPECT_RATIO_OPTIONS = {
   ],
 };
 
+// grok-imagine/image-to-video's aspect_ratio is a strict enum (confirmed on
+// docs.kie.ai/market/grok-imagine/image-to-video) — only these five values
+// are accepted. The Video tab's generic aspect-ratio field and the Story
+// tab's own aspect-ratio selector both offer a wider set (including 4:3,
+// 3:4, 21:9), so sending one of those straight through as-is gets rejected
+// by kie.ai — this app used to do exactly that. closestAspectRatioFrom()
+// maps any "W:H" string to the numerically nearest value in this list
+// instead, used only for this one model's requests.
+const GROK_IMAGINE_VIDEO_ASPECT_RATIOS = ["1:1", "16:9", "9:16", "3:2", "2:3"];
+function ratioValue(ratioStr) {
+  const [w, h] = (ratioStr || "1:1").split(":").map(Number);
+  return (w && h) ? w / h : 1;
+}
+function closestAspectRatioFrom(ratio, allowed) {
+  if (allowed.includes(ratio)) return ratio;
+  const target = ratioValue(ratio);
+  return allowed.reduce((best, candidate) =>
+    Math.abs(ratioValue(candidate) - target) < Math.abs(ratioValue(best) - target) ? candidate : best
+  );
+}
+
 function populateAspectRatioOptions(imageModelKey) {
   const previousValue = aspectRatioEl.value;
   const options = ASPECT_RATIO_OPTIONS[imageModelKey];
@@ -2104,9 +2132,21 @@ function updateImageModelUI() {
   populateAspectRatioOptions(isWan ? "wan-2-7-image" : isGrokImagine ? "grok-imagine" : "seedream-5-pro");
   // WAN 2.7 Image's aspect_ratio only applies with no input images — when
   // editing, output size follows the uploaded image instead. Grok Imagine's
-  // image-to-image has no aspect_ratio parameter at all, so hide it there
-  // unconditionally rather than checking image count.
-  imageAspectWrap.style.display = ((isWan && isEditing) || (isGrokImagine && isEditing)) ? "none" : "block";
+  // image-to-image endpoint doesn't document an aspect_ratio parameter at
+  // all (docs.kie.ai/market/grok-imagine/image-to-image lists only prompt/
+  // image_urls/nsfw_checker) — but a real test against the live API proved
+  // kie.ai quietly accepts one anyway and actually honors it, exactly
+  // matching xAI's own direct docs ("works for image generation and image
+  // editing with MULTIPLE images"): sending aspect_ratio with a single
+  // attached image is silently ignored (output always matches that image's
+  // own size, confirmed: requested 16:9 on a 1:1 source came back 1:1
+  // unchanged), but with 2+ images attached it's genuinely applied
+  // (confirmed: requested 16:9 with 2 images came back exactly 1280x720).
+  // So the row only needs to hide (with a hint explaining why) for the
+  // single-image case — multi-image editing gets the real selector.
+  const grokImagineIgnoresAspectRatio = isGrokImagine && sourceImages.length === 1;
+  imageAspectWrap.style.display = ((isWan && isEditing) || grokImagineIgnoresAspectRatio) ? "none" : "block";
+  imageAspectHintEl.style.display = grokImagineIgnoresAspectRatio ? "block" : "none";
   // Grok Imagine has no "resolution" concept, and text-to-image is always
   // sent as "Quality" (enable_pro: true, a 4-image batch) with no user-facing
   // choice — image-to-image has no quality variant at all — so the whole
@@ -4503,14 +4543,21 @@ async function createTaskForJob(job) {
     // how the multi-image result is handled) — the cheaper "Speed" variant
     // (enable_pro: false, 6 images/generation) exists on kie.ai but isn't
     // offered as a choice in this app. image-to-image always returns
-    // exactly 1 image and has no enable_pro, aspect_ratio, or resolution
-    // parameter at all.
+    // exactly 1 image and has no enable_pro or resolution parameter at all.
+    // aspect_ratio ISN'T documented for it either (docs.kie.ai lists only
+    // prompt/image_urls/nsfw_checker) — but a real API test confirmed
+    // kie.ai quietly accepts and honors it when 2+ images are attached
+    // (ignored with just 1, output then matches that image's own size —
+    // see updateImageModelUI()'s comment), matching xAI's own direct docs
+    // for multi-image editing. Sent unconditionally since it's harmless in
+    // the ignored case.
     if (job.mode === "i2i") {
       const imageUrls = await uploadAllSourceImages(job.sourceImages, job.id);
       model = "grok-imagine/image-to-image";
       input = {
         prompt: job.prompt,
         image_urls: imageUrls, // capped at 5 by currentImageMaxImages() — see its comment for the caveat
+        aspect_ratio: job.aspectRatio,
         nsfw_checker: false,
       };
     } else {
@@ -4594,7 +4641,12 @@ async function createTaskForJob(job) {
         // every other model's numeric duration field here — sent as-is.
         duration: String(job.duration),
         resolution: cfg.resolution,
-        aspect_ratio: job.aspectRatio, // per docs, only actually applies in multi-image mode
+        // aspect_ratio is a strict enum here (unlike every other video model
+        // in this app) — see GROK_IMAGINE_VIDEO_ASPECT_RATIOS' comment above.
+        // job.aspectRatio can be any Story/Video tab ratio (e.g. "4:3"),
+        // which kie.ai rejects outright for this model, so it's clamped to
+        // the nearest accepted value rather than sent as-is.
+        aspect_ratio: closestAspectRatioFrom(job.aspectRatio, GROK_IMAGINE_VIDEO_ASPECT_RATIOS),
         nsfw_checker: false, // documented default is already false; explicit here for consistency with wan-2-6-i2v above
       };
     } else if (job.videoModelKey === "hailuo-02-i2v-standard") {

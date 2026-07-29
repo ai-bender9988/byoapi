@@ -47,6 +47,9 @@ Everything below walks through setup and every feature in detail — for
 a quick start, jump to sections 1–4 and come back for the rest as you
 need it.
 
+**Support**: if this saved you some money, feel free to send some back —
+**BTC**: `bc1q7gtpm7r8uvdg8gzyqn4e0awrxmmcx2ltm4lwx9`
+
 ---
 
 ## 1. Install Python
@@ -491,8 +494,17 @@ each model has different capabilities and parameters on kie.ai.
   documents `duration` as a **string**, not a number, unlike every other
   model here; this app sends it as one), 480p fixed (kie.ai also offers
   720p — edit `resolution` in `VIDEO_MODELS` if you want that), and an
-  aspect ratio selector (per kie.ai's docs, only actually applies when
-  more than one image is attached). No audio field is documented for
+  aspect ratio selector — **a strict enum here, unlike every other
+  video model in this app: only `1:1`/`16:9`/`9:16`/`3:2`/`2:3` are
+  accepted** (confirmed on kie.ai's own OpenAPI spec), and only
+  actually applied server-side when more than one image is attached
+  (single-image mode follows the image's own size instead). This app's
+  own aspect-ratio selectors (both the Video tab's and the Story tab's)
+  offer a wider set, including `4:3`/`3:4`/`21:9` — sending one of those
+  straight through used to get rejected by kie.ai outright;
+  `GROK_IMAGINE_VIDEO_ASPECT_RATIOS`/`closestAspectRatioFrom()` in
+  `index.html` now clamp to the nearest accepted value before sending,
+  specifically for this one model. No audio field is documented for
   this endpoint. Also selectable as a fast, no-local-server video engine
   for Story tab scenes (section 8a), alongside Seedance 1.5 Pro and
   ComfyUI/LTX — and the only Story tab video engine that actually uses
@@ -725,11 +737,22 @@ editing, empty → generation):
   editing but cap it at 3 source images. 5 was requested anyway ("try
   it, a real API error will tell us if it's wrong") — if kie.ai/xAI
   actually reject more than 1 (or 3) images, that surfaces as a normal
-  job error rather than silently misbehaving. No `aspect_ratio`, no
-  `enable_pro`/quality parameter, no negative prompt — the **Aspect
-  ratio** row hides entirely once an image is attached, since it
-  doesn't apply. Always returns exactly one image, same as every other
-  model's i2i mode.
+  job error rather than silently misbehaving. No `enable_pro`/quality
+  parameter, no negative prompt. **`aspect_ratio` isn't documented for
+  this endpoint at all** (docs.kie.ai's OpenAPI spec lists only
+  `prompt`, `image_urls`, and `nsfw_checker`) — but a real test against
+  the live API proved kie.ai quietly accepts one anyway and genuinely
+  honors it, exactly matching xAI's own direct-API docs ("works for
+  image generation and image editing with **multiple** images"):
+  requesting `16:9` with a single attached image came back unchanged at
+  the source image's own 1:1, while the identical request with 2 images
+  attached came back at exactly 1280×720. So this app sends
+  `aspect_ratio` unconditionally (harmless in the single-image case)
+  and only shows the **Aspect ratio** selector once 2+ images are
+  attached — with exactly 1, it hides in favor of a short hint
+  explaining that single-image edits ignore it and follow that image's
+  own size instead. Always returns exactly one image, same as every
+  other model's i2i mode.
   **Multi-image prompts must reference each attached image by a
   literal `@image1`, `@image2`, ... token** in the prompt text itself —
   this is Grok Imagine's own required binding mechanism between text
