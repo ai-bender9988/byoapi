@@ -54,8 +54,10 @@ need it.
 
 ## 1. Install Python
 
-You need Python 3.9 or newer. No other packages are required — everything
-here uses only Python's standard library, no `pip install` needed.
+You need Python 3.10 or newer (the code uses `str | None`-style type
+hints, which only work at runtime from 3.10 on). No other packages are
+required — everything here uses only Python's standard library, no
+`pip install` needed.
 
 **Check if you already have it:**
 
@@ -109,25 +111,51 @@ After installing, close and reopen your terminal, then verify again with
 
 ## 3. Set up this project
 
-1. Put all the files from this project in one folder (e.g. `kie-seedream-ui`).
-2. Rename `kie_key.example.txt` to `kie_key.txt`.
-3. Open `kie_key.txt` in a plain text editor and paste your kie.ai API key
-   in it — nothing else, just the key. (Or skip steps 2-3 and paste it into
-   the "API keys" section of the Options panel once the app is running —
-   see section 5a.)
-4. Optional: to be able to switch to the "Direct xAI API" Grok backend
+1. **Download the project** from GitHub — no `git` command needed:
+   - Go to the [GitHub page](https://github.com/ai-bender9988/byoapi).
+   - Click the green **"Code"** button, then **"Download ZIP"**.
+   - Extract the downloaded ZIP file somewhere on your computer — on
+     Windows, right-click it and choose **"Extract All..."**; on Mac,
+     just double-click it. The extracted folder (containing `proxy.py`,
+     `index.html`, and everything else) is your project folder — that's
+     what the rest of these steps mean by "the project folder."
+2. **Give the app your kie.ai API key.** There are two ways — pick
+   whichever's easier, both end up the same:
+   - **Through the app itself (no text editor needed):** skip straight
+     to section 4 and start the app — it runs fine with no key yet.
+     Once it's open, click **"⚙ Options"** at the top and paste your
+     key into the **"API keys"** section there (see section 5a). This
+     is the easiest route if you're using `run.bat`.
+   - **By hand, before starting the app:** rename
+     `kie_key.example.txt` to `kie_key.txt`, open it in a plain text
+     editor, and paste your key in — nothing else, just the key.
+3. Optional: to be able to switch to the "Direct xAI API" Grok backend
    (Options panel, section 5a — bypasses kie.ai's Grok proxy entirely for
-   when it's erroring out), get an xAI API key from console.x.ai and either
-   paste it into the same "API keys" section, or rename
-   `xai_key.example.txt` to `xai_key.txt` and paste it there by hand. Skip
-   this if you're fine staying on kie.ai only — everything works exactly as
-   before without it.
+   when it's erroring out), get an xAI API key from console.x.ai and give
+   it to the app the same way as above — either through the same
+   "API keys" section in Options, or by renaming `xai_key.example.txt`
+   to `xai_key.txt` and pasting it there by hand. Skip this if you're
+   fine staying on kie.ai only — everything works exactly as before
+   without it.
 
 ---
 
 ## 4. Run it
 
-Open a terminal, navigate to the project folder, and run:
+**Windows — the easy way:** double-click **`run.bat`** in the project
+folder. It checks that Python is installed **and that it's new enough
+(3.10+)** — if either isn't true, it automatically opens
+python.org's download page in your browser (it doesn't download or
+install anything itself — you still click through the installer
+yourself, same as always) and tells you exactly what to click during
+setup ("Add python.exe to PATH"). It also reminds you if `kie_key.txt`
+isn't set up yet (without blocking you; see section 3), starts the
+server, and opens your browser to the app automatically after a couple
+of seconds. Close its window (or press Ctrl+C in it) any time to stop
+the server — same as the manual method below.
+
+**Everyone else (or if you'd rather use a terminal):** open a terminal,
+navigate to the project folder, and run:
 
 ```bash
 python3 proxy.py
@@ -1386,6 +1414,8 @@ Press `Ctrl+C` in the terminal window where `proxy.py` is running.
 - `proxy.py` — local server + proxy to kie.ai, with both the standalone
   UI routes and the OpenAI-compatible `/v1/images/...` routes for Open WebUI
 - `index.html` — the standalone UI
+- `run.bat` — Windows double-click launcher (checks for Python, starts
+  `proxy.py`, opens your browser automatically); see section 4
 - `kie_key.txt` — your API key (create it yourself, rename `kie_key.example.txt`)
 - `xai_key.txt` — optional, only needed for the "Direct xAI API" Grok backend
   (Options panel, section 5a); create it yourself, rename `xai_key.example.txt`
