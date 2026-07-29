@@ -4788,7 +4788,7 @@ function renderGallery(entries) {
         : "txt2img";
     const captionDetail = isVideo ? (entry.duration ? `${entry.duration}s` : "") : (entry.aspect_ratio || "");
     const media = isVideo
-      ? `<video src="${entry.url}" muted preload="none"></video><div class="gallery-video-badge">&#9654;</div>`
+      ? `<video src="${entry.url}" muted preload="metadata"></video><div class="gallery-video-badge">&#9654;</div>`
       : `<img src="${entry.url}" alt="${promptAttr}" loading="lazy">`;
     return `
     <div class="gallery-item">

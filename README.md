@@ -44,11 +44,24 @@ directly to xAI — see section 5a).
   writing and story generation working.
 
 Everything below walks through setup and every feature in detail — for
-a quick start, jump to sections 1–4 and come back for the rest as you
+a quick start, jump to sections 0–4 and come back for the rest as you
 need it.
 
-**Support**: if this saved you some money, feel free to send some back —
-**BTC**: `bc1q7gtpm7r8uvdg8gzyqn4e0awrxmmcx2ltm4lwx9`
+**Donations:** `bc1q7gtpm7r8uvdg8gzyqn4e0awrxmmcx2ltm4lwx9`
+
+---
+
+## 0. Download this project
+
+No `git` command needed:
+
+1. Go to the [GitHub page](https://github.com/ai-bender9988/byoapi).
+2. Click the green **"Code"** button, then **"Download ZIP"**.
+3. Extract the downloaded ZIP file somewhere on your computer — on
+   Windows, right-click it and choose **"Extract All..."**; on Mac,
+   just double-click it. The extracted folder (containing `proxy.py`,
+   `index.html`, and everything else) is your project folder — that's
+   what the rest of these steps mean by "the project folder."
 
 ---
 
@@ -111,15 +124,9 @@ After installing, close and reopen your terminal, then verify again with
 
 ## 3. Set up this project
 
-1. **Download the project** from GitHub — no `git` command needed:
-   - Go to the [GitHub page](https://github.com/ai-bender9988/byoapi).
-   - Click the green **"Code"** button, then **"Download ZIP"**.
-   - Extract the downloaded ZIP file somewhere on your computer — on
-     Windows, right-click it and choose **"Extract All..."**; on Mac,
-     just double-click it. The extracted folder (containing `proxy.py`,
-     `index.html`, and everything else) is your project folder — that's
-     what the rest of these steps mean by "the project folder."
-2. **Give the app your kie.ai API key.** There are two ways — pick
+Already downloaded the project in step 0? Then just:
+
+1. **Give the app your kie.ai API key.** There are two ways — pick
    whichever's easier, both end up the same:
    - **Through the app itself (no text editor needed):** skip straight
      to section 4 and start the app — it runs fine with no key yet.
@@ -129,7 +136,7 @@ After installing, close and reopen your terminal, then verify again with
    - **By hand, before starting the app:** rename
      `kie_key.example.txt` to `kie_key.txt`, open it in a plain text
      editor, and paste your key in — nothing else, just the key.
-3. Optional: to be able to switch to the "Direct xAI API" Grok backend
+2. Optional: to be able to switch to the "Direct xAI API" Grok backend
    (Options panel, section 5a — bypasses kie.ai's Grok proxy entirely for
    when it's erroring out), get an xAI API key from console.x.ai and give
    it to the app the same way as above — either through the same
