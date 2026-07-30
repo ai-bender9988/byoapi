@@ -62,6 +62,13 @@
     padding: 3px 8px;
     font-size: 0.7rem;
   }
+  .cost-bar-disclaimer {
+    font-size: 0.68rem;
+    color: var(--text-dim);
+    opacity: 0.75;
+    margin-top: -14px;
+    margin-bottom: 20px;
+  }
   .grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -827,6 +834,24 @@
     cursor: pointer;
   }
   .options-auto-fallback-row input { margin: 0; }
+  .nsfw-toggle-section {
+    border: 1.5px solid #d9822b;
+    background: rgba(217, 130, 43, 0.08);
+  }
+  .nsfw-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    cursor: pointer;
+    user-select: none;
+  }
+  .nsfw-toggle-row input {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+  }
   .options-pricing-grid {
     display: grid;
     grid-template-columns: 1fr 110px;
@@ -1164,8 +1189,12 @@
     <button class="secondary-btn" id="session-cost-reset-btn" type="button">reset</button>
     <span style="opacity:0.4;">|</span>
     All-time: <span class="cost-value" id="alltime-cost-value">~$0.000</span>
+    <span id="spend-cap-indicator"></span>
     <button class="secondary-btn" id="alltime-cost-reset-btn" type="button">reset</button>
     <button class="secondary-btn" id="options-open-btn" type="button">&#9881; Options</button>
+  </div>
+  <div class="cost-bar-disclaimer" title="These are rough, locally-computed guesses only — not a bill and not billing data from kie.ai. They can drift from what kie.ai actually charges you. Check your kie.ai dashboard for real usage/billing, and use this app entirely at your own risk — no responsibility is taken for any costs incurred.">
+    Rough estimate only, not a bill — always verify on your kie.ai dashboard. Used entirely at your own risk; no responsibility taken for costs incurred.
   </div>
 
   <div class="grid">
@@ -1239,8 +1268,7 @@
         <div class="row2">
           <button class="primary" id="story-generate-btn" type="button">Generate story</button>
           <select id="story-grok-model">
-            <option value="">Grok model: 4.3 (default)</option>
-            <option value="grok-4-3">Grok model: 4.3</option>
+            <option value="grok-4-3" selected>Grok model: 4.3 (default)</option>
             <option value="grok-4-5">Grok model: 4.5</option>
           </select>
         </div>
@@ -1556,6 +1584,11 @@
       <button class="modal-close-btn" id="options-close-btn" type="button">&times;</button>
     </div>
 
+    <div class="options-section nsfw-toggle-section">
+      <label class="nsfw-toggle-row"><input type="checkbox" id="options-nsfw-toggle"> &#128293; NSFW mode</label>
+      <div class="hint">On by default. Swaps every Grok system prompt in this app (Image/Video Prompt Assistant, Story generation, scene rewrites, motion prompts — thirteen in total) for its explicit counterpart, editable individually below under "Grok prompts". Remembered across restarts, same as every other setting here — it stays however you left it. Only changes which <em>instructions</em> Grok gets; kie.ai's/xAI's own content moderation on the actual image/video generation calls still applies independently.</div>
+    </div>
+
     <div class="options-section">
       <h3>API keys</h3>
       <div class="hint">Stored in plain text in <code>kie_key.txt</code> / <code>xai_key.txt</code> (same folder as <code>proxy.py</code>) — the same files you could already edit by hand, just editable from here too. Leave a field blank to keep its current value; a key that's already saved is never shown back here, only whether one is set.</div>
@@ -1588,6 +1621,16 @@
     </div>
 
     <div class="options-section">
+      <h3>Spend cap</h3>
+      <div class="hint">Once the All-time spend estimate (top of the page) reaches this amount, new kie.ai image/video jobs are refused — enforced server-side, so it holds even from a stale tab. Set to 0 to disable. This is still an estimate against estimates, not exact kie.ai billing — see the disclaimer above the tabs.</div>
+      <div class="row2">
+        <input type="number" step="0.01" min="0" id="options-spend-cap-input" placeholder="0 = disabled">
+        <button class="secondary-btn" id="options-spend-cap-save-btn" type="button">Save cap</button>
+      </div>
+      <div class="status" id="options-spend-cap-status"></div>
+    </div>
+
+    <div class="options-section">
       <h3>Pricing (kie.ai rate overrides)</h3>
       <div class="hint">Only affects the cost estimates shown in this app, not what kie.ai actually charges — update these if kie.ai's published rates change.</div>
       <div id="options-pricing-image" class="options-pricing-grid"></div>
@@ -1601,7 +1644,7 @@
 
     <div class="options-section">
       <h3>Grok prompts</h3>
-      <div class="hint">Every system prompt Grok is given anywhere in this app, in one place, clearly labeled by which part of the app sends it — click one to expand and edit it. These are the same prompts (and the same override file) as the "&#9998; Edit system prompt" button embedded in the Image/Video Prompt Assistant panels — editing one here or there changes the same thing.</div>
+      <div class="hint">Every system prompt Grok is given anywhere in this app, in one place, clearly labeled by which part of the app sends it — click one to expand and edit it. These are the same prompts (and the same override file) as the "&#9998; Edit system prompt" button embedded in the Image/Video Prompt Assistant panels — editing one here or there changes the same thing. Each one also has a separate "NSFW" version below it, used instead of the normal one whenever NSFW mode (see the top of this panel) is on — both start pre-filled with a real built-in prompt, editable and resettable independently.</div>
       <div id="options-grok-prompts"></div>
     </div>
   </div>
@@ -1879,6 +1922,14 @@ let SEEDANCE_1_5_PRO_AUDIO_PRICE_USD_PER_SECOND = 0.0175;
 // says "additional cost applies" without a figure.
 let VIDEO_AUDIO_SURCHARGE_USD = 0.01;
 
+// Grok text calls (Prompt Assistant turns, story generation, scene
+// rewrites, video motion prompts) aren't priced per-token anywhere in
+// kie.ai's public docs — this is a user-supplied estimate from their own
+// kie.ai dashboard usage (~2 credits/call @ $0.005/credit), not an
+// independently confirmed rate like the figures above. Only charged when
+// a call actually went through kie.ai — see addGrokCallCostToSession().
+let GROK_TEXT_CALL_USD = 0.01;
+
 // Snapshot of the built-in rates above, taken before any Options-panel
 // override is ever applied — lets "Reset to built-in defaults" restore them
 // without needing a server round-trip to ask what the defaults were.
@@ -1887,6 +1938,7 @@ const DEFAULT_PRICING = {
   videoPerSecond: { ...VIDEO_PRICING_USD_PER_SECOND },
   seedance15ProAudioPerSecond: SEEDANCE_1_5_PRO_AUDIO_PRICE_USD_PER_SECOND,
   videoAudioSurcharge: VIDEO_AUDIO_SURCHARGE_USD,
+  grokTextCallUsd: GROK_TEXT_CALL_USD,
 };
 
 const tabs = document.querySelectorAll(".tab");
@@ -2467,6 +2519,7 @@ assistantGenerateBtn.addEventListener("click", async () => {
     assistantHistory[modeKey].push({
       role: "assistant", prompt: data.prompt, negativePrompt: data.negative_prompt || "", reasoning: data.reasoning, model: data.model, usedFallback: !!data.usedFallback,
     });
+    addGrokCallCostToSession(!!data.usedFallback);
     renderAssistantConversation();
     assistantStatusEl.textContent = "";
     assistantBriefEl.value = "";
@@ -2683,18 +2736,50 @@ sessionCostResetBtn.addEventListener("click", () => {
   sessionCostValueEl.textContent = "~$0.000";
 });
 
+// Adds the flat per-call Grok text-generation estimate (Prompt Assistant,
+// Story generation, scene rewrites, video motion prompts) to both spend
+// counters — but only when the call actually spent kie.ai credits: skip it
+// if the app is set to the direct-xAI backend, or if this particular call
+// fell back to direct xAI after kie.ai's proxy errored (usedFallback).
+function addGrokCallCostToSession(usedFallback) {
+  if (appConfig.grokBackend !== "kie" || usedFallback) return;
+  sessionSpendUSD += GROK_TEXT_CALL_USD;
+  sessionCostValueEl.textContent = `~$${sessionSpendUSD.toFixed(3)}`;
+  addJobCostToAllTime(GROK_TEXT_CALL_USD);
+}
+
 // All-time spend — unlike the session bar above, this survives a refresh
 // (persisted server-side in cost_totals.json) — every job's estimated cost
 // is added here too, right alongside the session total, using the exact
 // same estimate.
 const alltimeCostValueEl = document.getElementById("alltime-cost-value");
 const alltimeCostResetBtn = document.getElementById("alltime-cost-reset-btn");
+const spendCapIndicatorEl = document.getElementById("spend-cap-indicator");
+let currentAllTimeUsd = 0;
+
+// Purely a visibility aid — the real enforcement is server-side in
+// proxy.py's /api/create-task (see spendCapUsd). Shows nothing when no cap
+// is set (the common case).
+function updateSpendCapDisplay() {
+  const cap = appConfig.spendCapUsd || 0;
+  if (!cap) { spendCapIndicatorEl.textContent = ""; spendCapIndicatorEl.title = ""; return; }
+  const remaining = cap - currentAllTimeUsd;
+  if (remaining <= 0) {
+    spendCapIndicatorEl.textContent = ` (cap reached — new jobs blocked)`;
+    spendCapIndicatorEl.title = `All-time spend has reached your $${cap.toFixed(2)} cap (Options → Spend cap). Raise or disable it there to keep generating.`;
+  } else {
+    spendCapIndicatorEl.textContent = ` ($${remaining.toFixed(2)} left of $${cap.toFixed(2)} cap)`;
+    spendCapIndicatorEl.title = `Options → Spend cap is set to $${cap.toFixed(2)}. New kie.ai jobs stop once All-time reaches that.`;
+  }
+}
 
 async function loadAllTimeCost() {
   try {
     const res = await fetch("/api/cost-totals");
     const data = await res.json();
-    alltimeCostValueEl.textContent = `~$${(data.allTimeUsd || 0).toFixed(3)}`;
+    currentAllTimeUsd = data.allTimeUsd || 0;
+    alltimeCostValueEl.textContent = `~$${currentAllTimeUsd.toFixed(3)}`;
+    updateSpendCapDisplay();
   } catch (err) {
     // fail silently; the value just stays at its last-known/default display
   }
@@ -2707,7 +2792,11 @@ function addJobCostToAllTime(cost) {
     body: JSON.stringify({ add: cost }),
   })
     .then(res => res.json())
-    .then(data => { alltimeCostValueEl.textContent = `~$${(data.allTimeUsd || 0).toFixed(3)}`; })
+    .then(data => {
+      currentAllTimeUsd = data.allTimeUsd || 0;
+      alltimeCostValueEl.textContent = `~$${currentAllTimeUsd.toFixed(3)}`;
+      updateSpendCapDisplay();
+    })
     .catch(() => {}); // fail silently — worst case the running total just misses this one increment
 }
 
@@ -2720,7 +2809,9 @@ alltimeCostResetBtn.addEventListener("click", async () => {
       body: JSON.stringify({ reset: true }),
     });
     const data = await res.json();
-    alltimeCostValueEl.textContent = `~$${(data.allTimeUsd || 0).toFixed(3)}`;
+    currentAllTimeUsd = data.allTimeUsd || 0;
+    alltimeCostValueEl.textContent = `~$${currentAllTimeUsd.toFixed(3)}`;
+    updateSpendCapDisplay();
   } catch (err) {
     alert("Failed to reset: " + (err.message || err));
   }
@@ -3863,6 +3954,7 @@ async function generateSceneVideo(sceneIndex) {
     });
     const data = await res.json();
     if (!res.ok || !data.prompt) throw new Error(data.error || "Failed to write a motion prompt.");
+    addGrokCallCostToSession(!!data.usedFallback);
     updateJob(videoJob.id, { prompt: data.prompt, statusText: "Queued...", usedGrokFallback: !!data.usedFallback });
     if (engine === "comfyui-ltx") {
       await runComfyUIJob(videoJob);
@@ -3931,6 +4023,7 @@ async function rewriteSceneImagePrompt(sceneIndex, targetEngine) {
     });
     const data = await res.json();
     if (!res.ok || !data.prompt) throw new Error(data.error || "Failed to rewrite the prompt.");
+    addGrokCallCostToSession(!!data.usedFallback);
     scene.image_prompt = data.prompt;
     updateStorySceneCardDom(sceneIndex);
     const newStatusEl = document.querySelector(`[data-story-scene-rewrite-status="${sceneIndex}"]`);
@@ -4020,6 +4113,7 @@ storyGenerateBtn.addEventListener("click", async () => {
     });
     if (streamError) throw new Error(streamError);
     if (!finalStory) throw new Error("Failed to generate a story (no result received).");
+    addGrokCallCostToSession(finalUsedFallback);
     currentStory = { title: finalStory.title, synopsis: finalStory.synopsis, id: null }; // no id yet — first "Save story" click creates it
     currentStoryBrief = brief;
     currentStoryCharacterEntries = characterEntries.map(e => ({ id: e.id, role: e.role }));
@@ -4713,7 +4807,7 @@ async function createTaskForJob(job) {
   if (!res.ok || !data?.data?.taskId) {
     console.error("createTask failed", { model, input, response: data });
     throw new Error(
-      `Failed to create task (model: ${model}): ` + JSON.stringify(data)
+      data?.error || `Failed to create task (model: ${model}): ` + JSON.stringify(data)
     );
   }
   return data.data.taskId;
@@ -5230,6 +5324,7 @@ videoFeelingLuckyBtn.addEventListener("click", async () => {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Failed to generate a prompt.");
+    addGrokCallCostToSession(!!data.usedFallback);
     videoStatusEl.textContent = "";
     queueVideoJob(data.prompt, cfg.hasNegativePrompt ? (data.negative_prompt || "") : undefined);
   } catch (err) {
@@ -5252,6 +5347,8 @@ let appConfig = {
   enabledVideoModels: {},
   grokBackend: "kie",
   grokAutoFallback: false,
+  nsfwEnabled: true,
+  spendCapUsd: 0,
   pricing: JSON.parse(JSON.stringify(DEFAULT_PRICING)),
 };
 const optionsBackdrop = document.getElementById("options-backdrop");
@@ -5271,6 +5368,7 @@ function applyPricingOverrides() {
   Object.assign(VIDEO_PRICING_USD_PER_SECOND, appConfig.pricing.videoPerSecond);
   SEEDANCE_1_5_PRO_AUDIO_PRICE_USD_PER_SECOND = appConfig.pricing.seedance15ProAudioPerSecond;
   VIDEO_AUDIO_SURCHARGE_USD = appConfig.pricing.videoAudioSurcharge;
+  GROK_TEXT_CALL_USD = appConfig.pricing.grokTextCallUsd;
 }
 
 // Hides/disables the option (rather than removing it) so a currently-saved
@@ -5306,6 +5404,7 @@ async function loadAppConfig() {
     applyModelAvailability();
     updateCostEstimate();
     updateVideoCostEstimate();
+    updateSpendCapDisplay();
   } catch (err) {
     // fail silently — everything stays at its built-in default
   }
@@ -5439,6 +5538,8 @@ function renderOptionsPricing() {
     <input type="number" step="0.0001" min="0" id="options-pricing-seedance-audio" value="${appConfig.pricing.seedance15ProAudioPerSecond}">
     <label>Other Seedance models — audio surcharge ($/s, unconfirmed)</label>
     <input type="number" step="0.0001" min="0" id="options-pricing-audio-surcharge" value="${appConfig.pricing.videoAudioSurcharge}">
+    <label>Grok text call — $/action estimate (Prompt Assistant, Story, kie.ai only)</label>
+    <input type="number" step="0.0001" min="0" id="options-pricing-grok-text-call" value="${appConfig.pricing.grokTextCallUsd}">
   `;
 }
 
@@ -5452,11 +5553,12 @@ document.getElementById("options-pricing-save-btn").addEventListener("click", as
   optionsPricingVideoEl.querySelectorAll("[data-pricing-video-field]").forEach(inp => { videoPerSecond[inp.dataset.pricingVideoField] = Number(inp.value); });
   const seedance15ProAudioPerSecond = Number(document.getElementById("options-pricing-seedance-audio").value);
   const videoAudioSurcharge = Number(document.getElementById("options-pricing-audio-surcharge").value);
+  const grokTextCallUsd = Number(document.getElementById("options-pricing-grok-text-call").value);
   try {
     const res = await fetch("/api/app-config", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pricing: { image, videoPerSecond, seedance15ProAudioPerSecond, videoAudioSurcharge } }),
+      body: JSON.stringify({ pricing: { image, videoPerSecond, seedance15ProAudioPerSecond, videoAudioSurcharge, grokTextCallUsd } }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Failed to save.");
@@ -5524,12 +5626,21 @@ function renderOptionsGrokPrompts() {
   optionsGrokPromptsEl.innerHTML = Object.entries(GROK_PROMPT_MODE_LABELS).map(([mode, label]) => `
     <details class="options-prompt-block">
       <summary>${escapeHtml(label)}</summary>
-      <textarea data-prompt-mode="${mode}" rows="8"></textarea>
+      <label style="margin-top:10px;">Normal</label>
+      <textarea data-prompt-mode="${mode}" data-prompt-variant="normal" rows="8"></textarea>
       <div class="row2">
-        <button class="secondary-btn" data-prompt-save="${mode}" type="button">Save</button>
-        <button class="secondary-btn" data-prompt-reset="${mode}" type="button">Reset to default</button>
+        <button class="secondary-btn" data-prompt-save="${mode}" data-prompt-variant="normal" type="button">Save</button>
+        <button class="secondary-btn" data-prompt-reset="${mode}" data-prompt-variant="normal" type="button">Reset to default</button>
       </div>
-      <div class="status" data-prompt-status="${mode}"></div>
+      <div class="status" data-prompt-status="${mode}" data-prompt-status-variant="normal"></div>
+
+      <label>NSFW <span style="opacity:0.6; font-weight:normal;">(used instead of the above, only while NSFW mode is on — see the toggle at the top of this panel)</span></label>
+      <textarea data-prompt-mode="${mode}" data-prompt-variant="nsfw" rows="8"></textarea>
+      <div class="row2">
+        <button class="secondary-btn" data-prompt-save="${mode}" data-prompt-variant="nsfw" type="button">Save</button>
+        <button class="secondary-btn" data-prompt-reset="${mode}" data-prompt-variant="nsfw" type="button">Reset to default</button>
+      </div>
+      <div class="status" data-prompt-status="${mode}" data-prompt-status-variant="nsfw"></div>
     </details>
   `).join("");
 }
@@ -5539,8 +5650,10 @@ async function loadAllOptionsGrokPrompts() {
     const res = await fetch("/api/assistant-prompts");
     const data = await res.json();
     Object.keys(GROK_PROMPT_MODE_LABELS).forEach(mode => {
-      const textarea = optionsGrokPromptsEl.querySelector(`textarea[data-prompt-mode="${mode}"]`);
-      if (textarea) textarea.value = data[mode]?.effective || "";
+      const normalTextarea = optionsGrokPromptsEl.querySelector(`textarea[data-prompt-mode="${mode}"][data-prompt-variant="normal"]`);
+      if (normalTextarea) normalTextarea.value = data[mode]?.effective || "";
+      const nsfwTextarea = optionsGrokPromptsEl.querySelector(`textarea[data-prompt-mode="${mode}"][data-prompt-variant="nsfw"]`);
+      if (nsfwTextarea) nsfwTextarea.value = data[mode]?.effectiveNsfw || "";
     });
   } catch (err) {
     // fail silently; textareas just stay empty and Save would overwrite with "" — matches other editors' offline behavior
@@ -5552,8 +5665,9 @@ optionsGrokPromptsEl.addEventListener("click", async (e) => {
   const resetBtn = e.target.closest("[data-prompt-reset]");
   if (!saveBtn && !resetBtn) return;
   const mode = saveBtn ? saveBtn.dataset.promptSave : resetBtn.dataset.promptReset;
-  const textarea = optionsGrokPromptsEl.querySelector(`textarea[data-prompt-mode="${mode}"]`);
-  const statusEl = optionsGrokPromptsEl.querySelector(`[data-prompt-status="${mode}"]`);
+  const variant = (saveBtn || resetBtn).dataset.promptVariant;
+  const textarea = optionsGrokPromptsEl.querySelector(`textarea[data-prompt-mode="${mode}"][data-prompt-variant="${variant}"]`);
+  const statusEl = optionsGrokPromptsEl.querySelector(`[data-prompt-status="${mode}"][data-prompt-status-variant="${variant}"]`);
   if (saveBtn) {
     statusEl.textContent = "Saving...";
     statusEl.className = "status";
@@ -5561,11 +5675,11 @@ optionsGrokPromptsEl.addEventListener("click", async (e) => {
       const res = await fetch("/api/assistant-prompts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, text: textarea.value }),
+        body: JSON.stringify({ mode, variant, text: textarea.value }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to save.");
-      statusEl.textContent = data.custom ? "Saved — using your custom version." : "Saved.";
+      statusEl.textContent = (variant === "nsfw" ? data.customNsfw : data.custom) ? "Saved — using your custom version." : "Saved.";
       statusEl.className = "status success";
     } catch (err) {
       statusEl.textContent = "Failed: " + (err.message || err);
@@ -5581,11 +5695,11 @@ optionsGrokPromptsEl.addEventListener("click", async (e) => {
       const res = await fetch("/api/assistant-prompts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, text: "" }),
+        body: JSON.stringify({ mode, variant, text: "" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to reset.");
-      textarea.value = data.default;
+      textarea.value = variant === "nsfw" ? data.defaultNsfw : data.default;
       statusEl.textContent = "Reset to default.";
       statusEl.className = "status success";
     } catch (err) {
@@ -5595,15 +5709,53 @@ optionsGrokPromptsEl.addEventListener("click", async (e) => {
   }
 });
 
+const optionsNsfwToggleEl = document.getElementById("options-nsfw-toggle");
+optionsNsfwToggleEl.addEventListener("change", () => {
+  appConfig.nsfwEnabled = optionsNsfwToggleEl.checked;
+  fetch("/api/app-config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nsfwEnabled: appConfig.nsfwEnabled }),
+  }).catch(() => {});
+});
+
+const optionsSpendCapInputEl = document.getElementById("options-spend-cap-input");
+document.getElementById("options-spend-cap-save-btn").addEventListener("click", async () => {
+  const statusEl = document.getElementById("options-spend-cap-status");
+  const value = Math.max(0, Number(optionsSpendCapInputEl.value) || 0);
+  statusEl.textContent = "Saving...";
+  statusEl.className = "status";
+  try {
+    const res = await fetch("/api/app-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ spendCapUsd: value }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to save.");
+    appConfig.spendCapUsd = data.spendCapUsd;
+    optionsSpendCapInputEl.value = appConfig.spendCapUsd || "";
+    updateSpendCapDisplay();
+    statusEl.textContent = appConfig.spendCapUsd > 0 ? `Saved — capped at $${appConfig.spendCapUsd.toFixed(2)}.` : "Saved — cap disabled.";
+    statusEl.className = "status success";
+  } catch (err) {
+    statusEl.textContent = "Failed: " + (err.message || err);
+    statusEl.className = "status error";
+  }
+});
+
 document.getElementById("options-open-btn").addEventListener("click", async () => {
   renderOptionsModelCheckboxes();
   renderOptionsGrokBackend();
   renderOptionsPricing();
   document.getElementById("options-pricing-status").textContent = "";
   document.getElementById("options-keys-status").textContent = "";
+  document.getElementById("options-spend-cap-status").textContent = "";
   loadKeysStatus();
   renderOptionsGrokPrompts();
   await loadAllOptionsGrokPrompts();
+  optionsNsfwToggleEl.checked = !!appConfig.nsfwEnabled;
+  optionsSpendCapInputEl.value = appConfig.spendCapUsd || "";
   optionsBackdrop.classList.add("active");
 });
 document.getElementById("options-close-btn").addEventListener("click", () => optionsBackdrop.classList.remove("active"));

@@ -42,6 +42,12 @@ directly to xAI — see section 5a).
 - **Resilience built in** — if kie.ai's own Grok proxy has a bad day,
   an optional direct-xAI fallback (manual or automatic) keeps prompt
   writing and story generation working.
+- **🔥 NSFW mode — on by default** — every Grok system prompt in the
+  app (thirteen of them) ships with an explicit counterpart, actively
+  used out of the box; a prominent switch at the top of the Options
+  panel turns it off if you'd rather it not be. See section 5a for
+  details — kie.ai's/xAI's own content moderation on the actual
+  generation calls still applies regardless of this setting.
 
 Everything below walks through setup and every feature in detail — for
 a quick start, jump to sections 0–4 and come back for the rest as you
@@ -257,6 +263,15 @@ estimate) opens a settings panel, persisted server-side
   restores the values documented in section 10 without needing to know
   what they were. This only affects what this app *estimates* — it has
   no effect on what kie.ai actually charges your account.
+- **Spend cap**: an optional hard ceiling (in USD, 0 = disabled) on the
+  All-time spend estimate. Once that total reaches the cap,
+  `/api/create-task` refuses to start any new kie.ai image/video job —
+  enforced server-side, so it holds even from a stale browser tab, not
+  just a disabled button in the UI. The spend bar shows how much is left
+  ("$X.XX left of $Y.YY cap") once one is set. Same caveat as everywhere
+  else in this section: it's checked against this app's own *estimate*,
+  not kie.ai's real billing, so leave some headroom rather than setting
+  it to the exact edge of what you're willing to spend.
 - **API keys**: lets you set/replace your kie.ai and xAI API keys from the
   UI instead of hand-editing `kie_key.txt`/`xai_key.txt`, the same way the
   Video tab already lets you set a ComfyUI server URL instead of editing
@@ -325,6 +340,25 @@ estimate) opens a settings panel, persisted server-side
   (and the `{{IMAGE_PROMPT_STYLE}}` one) in it — the app substitutes
   those automatically, and removing them silently stops that from
   working rather than erroring.
+
+  Each of the thirteen prompts actually has **two** fields: **Normal**
+  (as documented above) and **NSFW** underneath it — both pre-filled with
+  a real, built-in prompt (`DEFAULT_ASSISTANT_SYSTEM_PROMPTS`/
+  `DEFAULT_ASSISTANT_SYSTEM_PROMPTS_NSFW` in `proxy.py`, both committed to
+  this repo), editable and independently resettable. A prominent **"🔥
+  NSFW mode"** switch at the very top of this panel decides which set
+  Grok actually gets — **on by default**: every fresh install starts
+  with explicit prompts active across all thirteen. Turn it off there to
+  go back to the Normal set instead. This only changes which
+  *instructions* get sent to Grok — it has no effect on kie.ai's or
+  xAI's own content moderation on the actual image/video generation
+  calls, which can still reject a result independently. Like the model
+  toggles above (and unlike the auto-fallback checkbox), this setting
+  **is** remembered across restarts — it stays however you left it. Any
+  further edits you make to either field are still saved to
+  `assistant_prompts_override.json`, which stays gitignored — only the
+  built-in starting points are part of the repo, your own tweaks on top
+  of them are not.
 
 ---
 
@@ -1293,6 +1327,16 @@ that adds up every generation (image or video) since you opened the
 page, using the same rough per-item rates as the estimates shown before
 each Generate click. Click "reset" to zero it out.
 
+It also adds a flat estimate for every Grok text call made through
+kie.ai — Prompt Assistant turns, Story generation, per-scene rewrites,
+and video motion prompts. Unlike the image/video rates above, this
+figure (default $0.01/call, ~2 credits) isn't from kie.ai's published
+pricing — there's no public per-call rate for Grok text calls — it's an
+estimate based on the user's own kie.ai dashboard usage, editable in the
+Options panel like everything else. It's skipped for calls that used
+the direct-xAI backend or fell back to it (see section 5a), since those
+aren't billed through kie.ai credits at all.
+
 This is **in-memory only** — like the jobs list and Prompt Assistant
 conversations, it resets when you refresh the page. It's meant as a
 lightweight sanity check while experimenting (especially useful once
@@ -1314,6 +1358,14 @@ a lasting record rather than something you clear casually.
 > rates as of late July 2026.** kie.ai can change pricing at any time —
 > always check your kie.ai dashboard/console for your actual, current
 > billing before relying on the estimate shown in this tool.
+>
+> **These are rough, locally-computed estimates, not a bill and not
+> billing data from kie.ai.** They can be wrong or drift from what
+> kie.ai actually charges. This app and its cost estimates are provided
+> as-is, with no warranty of accuracy — you use it, and rely on any
+> figure it shows, entirely at your own risk. No responsibility is taken
+> for any costs or charges you incur through kie.ai, xAI, or any other
+> service this app talks to.
 
 Image pricing on kie.ai:
 
