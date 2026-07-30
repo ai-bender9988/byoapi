@@ -730,7 +730,7 @@
     object-fit: contain;
     border-radius: 8px;
     box-shadow: 0 10px 40px rgba(0,0,0,0.6);
-    cursor: zoom-out;
+    cursor: zoom-in;
     /* The small pop/settle motion on open — starts slightly smaller and
        fades in, then eases to full size. */
     transform: scale(0.96);
@@ -746,20 +746,24 @@
     max-height: none;
     cursor: zoom-out;
   }
-  .lightbox-native-btn {
+  .lightbox-close-btn {
     position: fixed;
     top: 18px;
     right: 18px;
     z-index: 1001;
-    padding: 7px 12px;
-    border-radius: 20px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
     border: 1px solid rgba(255,255,255,0.3);
     background: rgba(0,0,0,0.55);
     color: #fff;
-    font-size: 0.78rem;
+    font-size: 1.1rem;
+    line-height: 34px;
+    text-align: center;
+    padding: 0;
     cursor: pointer;
   }
-  .lightbox-native-btn:hover { background: rgba(0,0,0,0.8); }
+  .lightbox-close-btn:hover { background: rgba(0,0,0,0.8); }
 
   /* Options panel — a modal overlay, same layering approach as the
      lightbox above but for a form instead of media. */
@@ -904,6 +908,8 @@
     display: flex;
     align-items: baseline;
     justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 14px;
     margin-bottom: 12px;
   }
   .gallery-header h2 {
@@ -992,6 +998,38 @@
     cursor: pointer;
   }
   .gallery-item .gallery-use-btn:hover { background: var(--accent); }
+  .gallery-item .gallery-favorite-btn {
+    position: absolute;
+    bottom: 4px;
+    left: 4px;
+    z-index: 1;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.65);
+    color: #fff;
+    border: none;
+    font-size: 12px;
+    line-height: 20px;
+    padding: 0;
+    cursor: pointer;
+    text-align: center;
+  }
+  .gallery-item .gallery-favorite-btn:hover { background: rgba(0,0,0,0.85); }
+  .gallery-item .gallery-favorite-btn.active { background: #d9a02b; color: #fff; }
+  .gallery-favorites-toggle {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    cursor: pointer;
+    user-select: none;
+  }
+  .gallery-favorites-toggle input { margin: 0; }
+  #gallery-model-filter {
+    max-width: 160px;
+  }
   .character-card {
     position: relative;
     border: 1px solid var(--border);
@@ -1159,6 +1197,11 @@
     .character-card .character-card-edit-btn {
       padding: 5px 9px;
       font-size: 12px;
+    }
+    .gallery-item .gallery-favorite-btn {
+      width: 28px; height: 28px;
+      line-height: 28px;
+      font-size: 15px;
     }
     .character-card .gallery-delete-btn,
     .story-card .gallery-delete-btn {
@@ -1421,6 +1464,11 @@
           </div>
         </div>
 
+        <div id="video-seed-wrap" style="display:none;">
+          <label>Seed <span style="opacity:0.6; font-weight:normal;">(Wan 2.7 models only — blank = random)</span></label>
+          <input type="number" id="video-seed-input" placeholder="Random" min="0" max="2147483647" step="1">
+        </div>
+
         <div id="video-audio-wrap">
           <label>Audio</label>
           <select id="video-audio-select">
@@ -1486,6 +1534,11 @@
             <option value="high">2K — high quality</option>
           </select>
         </div>
+      </div>
+
+      <div id="image-seed-wrap" style="display:none;">
+        <label>Seed <span style="opacity:0.6; font-weight:normal;">(WAN 2.7 Image only — blank = random)</span></label>
+        <input type="number" id="image-seed-input" placeholder="Random" min="0" max="2147483647" step="1">
       </div>
 
       <button class="primary" id="generate-btn">Generate</button>
@@ -1569,6 +1622,8 @@
     <div class="gallery-header">
       <h2>Gallery</h2>
       <input type="text" id="gallery-search" placeholder="Search by prompt..." style="max-width:280px;">
+      <select id="gallery-model-filter"><option value="">All models</option></select>
+      <label class="gallery-favorites-toggle"><input type="checkbox" id="gallery-favorites-only"> &#9733; Favorites only</label>
       <span class="gallery-hint">Saved locally in the <code>outputs/</code> folder</span>
     </div>
     <div class="gallery-grid" id="gallery-grid">
@@ -1600,6 +1655,12 @@
         <button class="secondary-btn" id="options-keys-save-btn" type="button">Save keys</button>
       </div>
       <div class="status" id="options-keys-status"></div>
+    </div>
+
+    <div class="options-section">
+      <h3>Seed control</h3>
+      <div class="hint">Off by default. When on, a "Seed" field appears on the Image and Video tabs — but only for the three kie.ai models that actually accept one (WAN 2.7 Image, WAN 2.7 First/Last Frame to Video, WAN 2.7 Reference to Video; confirmed against kie.ai's own API docs — every other model here has no seed parameter at all). Leave the field blank for a random result each time (the default either way); fill it in to reproduce or nudge a previous result.</div>
+      <label class="options-auto-fallback-row"><input type="checkbox" id="options-seed-control-toggle"> Enable seed field on supported models</label>
     </div>
 
     <div class="options-section">
@@ -2039,6 +2100,8 @@ const videoDurationSelect = document.getElementById("video-duration-select");
 const videoDurationNumber = document.getElementById("video-duration-number");
 const videoAspectWrap = document.getElementById("video-aspect-wrap");
 const videoAspectRatioEl = document.getElementById("video-aspect-ratio");
+const videoSeedWrapEl = document.getElementById("video-seed-wrap");
+const videoSeedInputEl = document.getElementById("video-seed-input");
 const videoAudioWrap = document.getElementById("video-audio-wrap");
 const videoAudioSelect = document.getElementById("video-audio-select");
 const videoResolutionHint = document.getElementById("video-resolution-hint");
@@ -2058,6 +2121,8 @@ const aspectRatioEl = document.getElementById("aspect-ratio");
 const qualityEl = document.getElementById("quality");
 const qualityWrapEl = document.getElementById("quality-wrap");
 const qualityLabelEl = document.getElementById("quality-label");
+const imageSeedWrapEl = document.getElementById("image-seed-wrap");
+const imageSeedInputEl = document.getElementById("image-seed-input");
 const generateBtn = document.getElementById("generate-btn");
 const statusEl = document.getElementById("status");
 const costEstimateEl = document.getElementById("cost-estimate");
@@ -2067,6 +2132,16 @@ const resultPanel = document.getElementById("result-panel");
 const galleryGrid = document.getElementById("gallery-grid");
 const gallerySearchEl = document.getElementById("gallery-search");
 gallerySearchEl.addEventListener("input", () => {
+  galleryShownCount = GALLERY_PAGE_SIZE;
+  renderGallery(galleryEntries);
+});
+const galleryModelFilterEl = document.getElementById("gallery-model-filter");
+galleryModelFilterEl.addEventListener("change", () => {
+  galleryShownCount = GALLERY_PAGE_SIZE;
+  renderGallery(galleryEntries);
+});
+const galleryFavoritesOnlyEl = document.getElementById("gallery-favorites-only");
+galleryFavoritesOnlyEl.addEventListener("change", () => {
   galleryShownCount = GALLERY_PAGE_SIZE;
   renderGallery(galleryEntries);
 });
@@ -2222,6 +2297,7 @@ function updateImageModelUI() {
   updateCostEstimate();
   // Model/image changes can flip the assistant's auto-derived mode.
   if (assistantOpen) renderResultPanel();
+  imageSeedWrapEl.style.display = (appConfig.seedControlEnabled && isWan) ? "block" : "none";
 }
 
 tabs.forEach(tab => {
@@ -2683,6 +2759,10 @@ function updateVideoModelUI() {
 
   // Negative prompt (Wan 2.7 models only — not a supported field on Seedream/Seedance)
   videoNegativeWrap.style.display = cfg.hasNegativePrompt ? "block" : "none";
+
+  // Seed (Wan 2.7 i2v/r2v only — kie.ai's other video models don't accept one)
+  const videoSeedSupported = videoModelSelect.value === "wan-2-7-i2v" || videoModelSelect.value === "wan-2-7-r2v";
+  videoSeedWrapEl.style.display = (appConfig.seedControlEnabled && videoSeedSupported) ? "block" : "none";
 
   videoResolutionHint.textContent = cfg.backend === "comfyui"
     ? "Resolution: whatever your workflow's resize node produces — fixed by the workflow, not this app."
@@ -3664,9 +3744,11 @@ storyScenesEl.addEventListener("input", (e) => {
 // single element living outside both grids, so re-rendering either one
 // (which happens often for the scene grid while a job is polling) never
 // closes it or resets it. openLightbox() shows the given image URL with a
-// small pop/fade-in transition; click the image/backdrop or press Escape
-// to close; the "1:1" button toggles between fit-to-screen and native
-// pixel size (scrollable if larger than the viewport).
+// small pop/fade-in transition, fit to the screen. Clicking the image
+// itself toggles between that fit-to-screen size and native pixel size
+// (scrollable if larger than the viewport) — it does NOT close the
+// lightbox. Closing only happens via the backdrop (clicking outside the
+// image), the × button, or Escape.
 function ensureLightbox() {
   let backdrop = document.getElementById("lightbox-backdrop");
   if (!backdrop) {
@@ -3675,13 +3757,16 @@ function ensureLightbox() {
     backdrop.className = "lightbox-backdrop";
     backdrop.innerHTML = `
       <img class="lightbox-img" id="lightbox-img" alt="">
-      <button class="lightbox-native-btn" id="lightbox-native-btn" type="button" title="Toggle native pixel size">1:1 native size</button>
+      <button class="lightbox-close-btn" id="lightbox-close-btn" type="button" title="Close">&times;</button>
     `;
     backdrop.addEventListener("click", closeLightbox);
-    backdrop.querySelector("#lightbox-img").addEventListener("click", (e) => { e.stopPropagation(); closeLightbox(); });
-    backdrop.querySelector("#lightbox-native-btn").addEventListener("click", (e) => {
+    backdrop.querySelector("#lightbox-img").addEventListener("click", (e) => {
       e.stopPropagation();
       document.getElementById("lightbox-img").classList.toggle("native");
+    });
+    backdrop.querySelector("#lightbox-close-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeLightbox();
     });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") closeLightbox();
@@ -4624,8 +4709,14 @@ async function createTaskForJob(job) {
       resolution: job.quality === "high" ? "2K" : "1K",
       thinking_mode: false,
       watermark: false,
-      seed: 0,
     };
+    // Confirmed on docs.kie.ai/market/wan/2-7-image: seed is an optional
+    // 0-2147483647 integer, auto-generated when omitted. Previously this
+    // always sent the literal value 0 (not a documented "random" sentinel),
+    // which pinned every generation to the same seed instead of varying —
+    // now only sent when the Options panel's "Seed control" toggle is on
+    // and the user actually typed a value; left out entirely otherwise.
+    if (job.seed !== null && job.seed !== undefined) input.seed = job.seed;
     // aspect_ratio only applies with no input images per kie.ai's docs —
     // omit it for edits, where output size follows the uploaded image.
     if (job.mode === "t2i") input.aspect_ratio = job.aspectRatio;
@@ -4694,8 +4785,9 @@ async function createTaskForJob(job) {
         duration: Number(job.duration),
         prompt_extend: true,
         watermark: false,
-        seed: 0,
       };
+      // See the wan/2-7-image seed comment above — same fix, same reasoning.
+      if (job.seed !== null && job.seed !== undefined) input.seed = job.seed;
       if (imageUrls[1]) input.last_frame_url = imageUrls[1];
     } else if (job.videoModelKey === "wan-2-7-r2v") {
       const imageUrls = await uploadAllSourceImages(job.sourceImages, job.id);
@@ -4708,8 +4800,8 @@ async function createTaskForJob(job) {
         duration: Number(job.duration),
         prompt_extend: true,
         watermark: false,
-        seed: 0,
       };
+      if (job.seed !== null && job.seed !== undefined) input.seed = job.seed;
       if ((job.referenceVideos || []).length) {
         input.reference_video = await uploadAllSourceImages(job.referenceVideos, job.id);
       }
@@ -4849,17 +4941,11 @@ let galleryShownCount = GALLERY_PAGE_SIZE;
 
 function renderGallery(entries) {
   galleryEntries = entries;
-  const q = gallerySearchEl.value.trim().toLowerCase();
-  const filtered = q ? galleryEntries.filter(e => (e.prompt || "").toLowerCase().includes(q)) : galleryEntries;
-  if (!galleryEntries.length) {
-    galleryGrid.innerHTML = "";
-    galleryGrid.appendChild(galleryEmpty);
-    return;
-  }
-  if (!filtered.length) {
-    galleryGrid.innerHTML = `<div class="gallery-empty">No results for "${escapeHtml(gallerySearchEl.value.trim())}".</div>`;
-    return;
-  }
+  const IMAGE_MODEL_LABELS = {
+    "seedream-5-pro": "Seedream 5 Pro",
+    "wan-2-7-image": "WAN 2.7 Image",
+    "grok-imagine": "Grok Imagine",
+  };
   const VIDEO_MODEL_LABELS = {
     "wan-2-6-i2v": "Wan 2.6",
     "wan-2-7-i2v": "Wan 2.7 I2V",
@@ -4871,15 +4957,46 @@ function renderGallery(entries) {
     "grok-imagine-video-1-5": "Grok Imagine Video 1.5",
     "hailuo-02-i2v-standard": "Hailuo 02 Standard",
   };
+  const modelKeyFor = e => e.mode === "video" ? e.video_model_key : e.image_model_key;
+  const modelLabelFor = e => e.mode === "video" ? (VIDEO_MODEL_LABELS[e.video_model_key] || e.video_model_key || "video") : (IMAGE_MODEL_LABELS[e.image_model_key] || e.image_model_key || "image");
+
+  // Keep the model-filter dropdown's options in sync with whatever models
+  // actually appear in the gallery, without clobbering the user's current
+  // selection mid-session (e.g. right after a new job of a new-to-them
+  // model lands while they have a filter open).
+  const presentModelKeys = [...new Set(galleryEntries.map(modelKeyFor).filter(Boolean))];
+  const previousModelFilterValue = galleryModelFilterEl.value;
+  galleryModelFilterEl.innerHTML = `<option value="">All models</option>` + presentModelKeys
+    .map(key => {
+      const entry = galleryEntries.find(e => modelKeyFor(e) === key);
+      return `<option value="${key}">${escapeHtml(modelLabelFor(entry))}</option>`;
+    })
+    .join("");
+  if (presentModelKeys.includes(previousModelFilterValue)) galleryModelFilterEl.value = previousModelFilterValue;
+
+  const q = gallerySearchEl.value.trim().toLowerCase();
+  const modelFilterValue = galleryModelFilterEl.value;
+  const favoritesOnly = galleryFavoritesOnlyEl.checked;
+  const filtered = galleryEntries.filter(e => {
+    if (q && !(e.prompt || "").toLowerCase().includes(q)) return false;
+    if (modelFilterValue && modelKeyFor(e) !== modelFilterValue) return false;
+    if (favoritesOnly && !e.favorite) return false;
+    return true;
+  });
+  if (!galleryEntries.length) {
+    galleryGrid.innerHTML = "";
+    galleryGrid.appendChild(galleryEmpty);
+    return;
+  }
+  if (!filtered.length) {
+    galleryGrid.innerHTML = `<div class="gallery-empty">No results${q ? ` for "${escapeHtml(gallerySearchEl.value.trim())}"` : ""}.</div>`;
+    return;
+  }
   const shown = filtered.slice(0, galleryShownCount);
   galleryGrid.innerHTML = shown.map(entry => {
     const promptAttr = (entry.prompt || "").replace(/"/g, "&quot;");
     const isVideo = entry.mode === "video";
-    const captionLabel = entry.mode === "i2i"
-      ? "img2img"
-      : isVideo
-        ? (VIDEO_MODEL_LABELS[entry.video_model_key] || "video")
-        : "txt2img";
+    const captionLabel = entry.mode === "i2i" ? "img2img" : (isVideo ? modelLabelFor(entry) : "txt2img");
     const captionDetail = isVideo ? (entry.duration ? `${entry.duration}s` : "") : (entry.aspect_ratio || "");
     const media = isVideo
       ? `<video src="${entry.url}" muted preload="metadata"></video><div class="gallery-video-badge">&#9654;</div>`
@@ -4890,6 +5007,7 @@ function renderGallery(entries) {
         ${media}
         <div class="gallery-caption">${captionLabel}${captionDetail ? " · " + captionDetail : ""}</div>
       </a>
+      <button class="gallery-favorite-btn${entry.favorite ? " active" : ""}" data-favorite-filename="${entry.filename}" data-favorite-current="${entry.favorite ? "1" : "0"}" title="${entry.favorite ? "Remove from favorites" : "Add to favorites"}">&#9733;</button>
       <button class="gallery-reuse-btn" data-reuse-filename="${entry.filename}" title="Reuse this prompt and settings${entry.mode !== "t2i" ? " (source image(s) not restored)" : ""}">&#8635;</button>
       <button class="gallery-use-btn" data-use-filename="${entry.filename}" title="Use this ${isVideo ? "video" : "image"} as input on the current tab">&#10133; Use</button>
       <button class="gallery-delete-btn" data-delete-filename="${entry.filename}" title="Delete">&times;</button>
@@ -5004,6 +5122,26 @@ galleryGrid.addEventListener("click", async (e) => {
   if (loadMoreBtn) {
     galleryShownCount += GALLERY_PAGE_SIZE;
     renderGallery(galleryEntries);
+    return;
+  }
+  const favoriteBtn = e.target.closest(".gallery-favorite-btn");
+  if (favoriteBtn) {
+    const filename = favoriteBtn.dataset.favoriteFilename;
+    const nextFavorite = favoriteBtn.dataset.favoriteCurrent !== "1";
+    try {
+      const res = await fetch("/api/gallery-favorite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename, favorite: nextFavorite }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update favorite.");
+      const entry = galleryEntries.find(en => en.filename === filename);
+      if (entry) entry.favorite = nextFavorite;
+      renderGallery(galleryEntries);
+    } catch (err) {
+      setStatus("Failed to update favorite: " + (err.message || err), "error");
+    }
     return;
   }
   const useBtn = e.target.closest(".gallery-use-btn");
@@ -5210,6 +5348,7 @@ generateBtn.addEventListener("click", () => {
   // Attached source images make this an edit (i2i); none makes it text-to-image.
   const jobMode = sourceImages.length ? "i2i" : "t2i";
 
+  const seedRaw = imageSeedWrapEl.style.display !== "none" ? imageSeedInputEl.value.trim() : "";
   const job = {
     id: Date.now() + "-" + Math.random().toString(36).slice(2),
     prompt,
@@ -5218,16 +5357,21 @@ generateBtn.addEventListener("click", () => {
     aspectRatio: aspectRatioEl.value,
     quality: qualityEl.value,
     sourceImages: [...sourceImages],
+    seed: seedRaw ? Number(seedRaw) : null,
     status: "pending",
     statusText: "Queued...",
   };
   jobs.unshift(job);
   renderJobs();
 
-  // Clear the form so the next job can be queued right away.
+  // Clear the form so the next job can be queued right away. The seed
+  // field resets to blank too — it's a one-off pin for reproducing a
+  // specific result, not a setting that should silently keep applying to
+  // every generation after — "random" stays the default going forward.
   promptEl.value = "";
   sourceImages = [];
   renderThumbs();
+  imageSeedInputEl.value = "";
 
   runJob(job);
 });
@@ -5252,6 +5396,7 @@ function queueVideoJob(promptText, negativePromptOverride) {
     return false;
   }
 
+  const videoSeedRaw = videoSeedWrapEl.style.display !== "none" ? videoSeedInputEl.value.trim() : "";
   const job = {
     id: Date.now() + "-" + Math.random().toString(36).slice(2),
     prompt: promptText,
@@ -5266,19 +5411,22 @@ function queueVideoJob(promptText, negativePromptOverride) {
     useFirstFrame: cfg.hasFrameModeToggle ? videoFirstFrameToggle.checked : undefined,
     sourceImages: cfg.imageMode !== "none" ? [...videoImages] : [],
     referenceVideos: currentVideoModelConfig().hasVideoReferences ? [...videoReferenceVideos] : [],
+    seed: videoSeedRaw ? Number(videoSeedRaw) : null,
     status: "pending",
     statusText: "Queued...",
   };
   jobs.unshift(job);
   renderJobs();
 
-  // Clear the form so the next job can be queued right away.
+  // Clear the form so the next job can be queued right away — the seed
+  // field resets too, same reasoning as the Image tab (see there).
   videoPromptEl.value = "";
   if (cfg.hasNegativePrompt) videoNegativePromptEl.value = "";
   videoImages = [];
   renderVideoThumbs();
   videoReferenceVideos = [];
   renderVideoVideoThumbs();
+  videoSeedInputEl.value = "";
 
   runJob(job);
   return true;
@@ -5349,6 +5497,7 @@ let appConfig = {
   grokAutoFallback: false,
   nsfwEnabled: true,
   spendCapUsd: 0,
+  seedControlEnabled: false,
   pricing: JSON.parse(JSON.stringify(DEFAULT_PRICING)),
 };
 const optionsBackdrop = document.getElementById("options-backdrop");
@@ -5405,6 +5554,8 @@ async function loadAppConfig() {
     updateCostEstimate();
     updateVideoCostEstimate();
     updateSpendCapDisplay();
+    updateImageModelUI();
+    updateVideoModelUI();
   } catch (err) {
     // fail silently — everything stays at its built-in default
   }
@@ -5744,6 +5895,18 @@ document.getElementById("options-spend-cap-save-btn").addEventListener("click", 
   }
 });
 
+const optionsSeedControlToggleEl = document.getElementById("options-seed-control-toggle");
+optionsSeedControlToggleEl.addEventListener("change", () => {
+  appConfig.seedControlEnabled = optionsSeedControlToggleEl.checked;
+  updateImageModelUI();
+  updateVideoModelUI();
+  fetch("/api/app-config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ seedControlEnabled: appConfig.seedControlEnabled }),
+  }).catch(() => {});
+});
+
 document.getElementById("options-open-btn").addEventListener("click", async () => {
   renderOptionsModelCheckboxes();
   renderOptionsGrokBackend();
@@ -5756,6 +5919,7 @@ document.getElementById("options-open-btn").addEventListener("click", async () =
   await loadAllOptionsGrokPrompts();
   optionsNsfwToggleEl.checked = !!appConfig.nsfwEnabled;
   optionsSpendCapInputEl.value = appConfig.spendCapUsd || "";
+  optionsSeedControlToggleEl.checked = !!appConfig.seedControlEnabled;
   optionsBackdrop.classList.add("active");
 });
 document.getElementById("options-close-btn").addEventListener("click", () => optionsBackdrop.classList.remove("active"));

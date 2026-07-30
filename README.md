@@ -227,16 +227,28 @@ shows up in the **Gallery** at the bottom of the page — this matters
 because kie.ai's own result links expire, so without it you'd lose
 access to anything you don't download yourself. The gallery loads 24
 items at a time with a "Show more" button (it's built to grow into the
-hundreds without slowing down — videos don't preload any data until you
-actually open one), and a **search box** above it filters by prompt
-text as you type. Click "↺ Reuse" on any job card or gallery thumbnail
-to reload that prompt and its settings; source images aren't stored for
-gallery reuse though (only job cards from the current session keep
-them), so image-edit and video reuse from the gallery needs a
-re-upload. Hover a thumbnail and click × to delete it permanently.
-Click a gallery image to open it in the same lightbox the Story tab
-uses (section 8a) — right-click still gives you the normal "open in new
-tab"/"save image as" browser menu, untouched.
+hundreds without slowing down). Above the grid: a **search box**
+filters by prompt text as you type; a **model dropdown** (populated
+automatically from whatever's actually in your gallery) filters to one
+model at a time; and a **"★ Favorites only"** checkbox filters to just
+the items you've starred. Click the ★ on any thumbnail to
+favorite/unfavorite it — favorites are saved server-side (`gallery.json`),
+so they survive a refresh. All three filters combine (e.g. search text
++ one model + favorites-only at once). Click "↺ Reuse" on any job card
+or gallery thumbnail to reload that prompt and its settings; source
+images aren't stored for gallery reuse though (only job cards from the
+current session keep them), so image-edit and video reuse from the
+gallery needs a re-upload. Hover a thumbnail and click × to delete it
+permanently.
+
+Click a gallery image (or a Story scene image) to open it in the shared
+**lightbox**: it opens fit-to-screen; click the image itself to switch
+to native pixel size (scrollable if it's bigger than your screen), and
+click again to switch back — the image toggles between the two sizes
+rather than closing. To close the lightbox, click anywhere outside the
+image, press Escape, or click the × in the corner. Right-click an image
+still gives you the normal "open in new tab"/"save image as" browser
+menu, untouched.
 
 ---
 
@@ -272,6 +284,18 @@ estimate) opens a settings panel, persisted server-side
   else in this section: it's checked against this app's own *estimate*,
   not kie.ai's real billing, so leave some headroom rather than setting
   it to the exact edge of what you're willing to spend.
+- **Seed control**: off by default. Turning it on reveals a "Seed" field
+  on the Image and Video tabs, but only for the three kie.ai models that
+  actually accept one — confirmed against kie.ai's own API docs, not
+  guessed: **WAN 2.7 Image**, **WAN 2.7 First/Last Frame to Video**, and
+  **WAN 2.7 Reference to Video**. Every other model here (Seedream 5 Pro,
+  Grok Imagine, WAN 2.6, all four Seedance variants, Hailuo 02) has no
+  seed parameter in kie.ai's documented API at all, so the field simply
+  doesn't appear for them regardless of this setting. The field is
+  always blank by default (kie.ai picks randomly when it's left out) and
+  resets to blank after every generation — fill it in for one specific
+  job to reproduce or nudge a previous result, rather than it silently
+  staying pinned to a fixed value.
 - **API keys**: lets you set/replace your kie.ai and xAI API keys from the
   UI instead of hand-editing `kie_key.txt`/`xai_key.txt`, the same way the
   Video tab already lets you set a ComfyUI server URL instead of editing
@@ -1120,14 +1144,15 @@ further below for why that was removed).
    the selected one) rather than being cropped to fill it. **Click any
    scene image to open it in a lightbox** — a near-fullscreen overlay
    with a small pop/fade-in so the transition is visible, not an
-   instant jump. Close it by clicking the image again, clicking the
-   dimmed background, or pressing **Escape**. The **"1:1 native size"**
-   button in the corner toggles between fit-to-screen and the image's
-   actual pixel size (scrolls if that's bigger than your screen) — the
-   same lightbox is also used for the **Gallery** (click any gallery
-   image; right-click still offers "open in new tab"/"save image as"
-   normally, since that's the underlying link's own browser behavior,
-   untouched). The story's title, shown above the grid, is an **editable text
+   instant jump, fit to your screen by default. Click the image itself
+   to toggle to its native pixel size (scrolls if that's bigger than
+   your screen) and back — this does not close it. Close the lightbox
+   by clicking the dimmed background, pressing **Escape**, or clicking
+   the **×** in the corner — the same lightbox is also used for the
+   **Gallery** (click any gallery image; right-click still offers "open
+   in new tab"/"save image as" normally, since that's the underlying
+   link's own browser behavior, untouched). The story's title, shown
+   above the grid, is an **editable text
    field** — rename it before saving if Grok's generated title isn't
    what you want. Each card shows just the narration and image/video up
    front. Everything

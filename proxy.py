@@ -2506,6 +2506,15 @@ DEFAULT_APP_CONFIG = {
     # since the session total resets on every refresh and would otherwise
     # be trivial to bypass.
     "spendCapUsd": 0,
+    # Off by default. Purely a frontend display switch — index.html only
+    # shows the Seed input on the Image/Video tabs (and only for the three
+    # models that actually accept one: wan-2-7-image, wan-2-7-i2v,
+    # wan-2-7-r2v — confirmed against kie.ai's own API docs, every other
+    # model here has no seed field) while this is True. The field itself
+    # always starts blank (= random) regardless of this setting; turning
+    # this on only makes the option to pin one available, it doesn't change
+    # any default.
+    "seedControlEnabled": False,
     "enabledVideoModels": {
         "wan-2-6-i2v": True, "wan-2-7-i2v": True, "wan-2-7-r2v": True,
         "seedance-1-5-pro": True, "seedance-2": True, "seedance-2-fast": True,
@@ -2560,6 +2569,8 @@ def load_app_config() -> dict:
         merged["nsfwEnabled"] = saved["nsfwEnabled"]
     if isinstance(saved.get("spendCapUsd"), (int, float)) and not isinstance(saved.get("spendCapUsd"), bool):
         merged["spendCapUsd"] = max(0, float(saved["spendCapUsd"]))
+    if isinstance(saved.get("seedControlEnabled"), bool):
+        merged["seedControlEnabled"] = saved["seedControlEnabled"]
     saved_pricing = saved.get("pricing", {})
     merged["pricing"]["image"].update(saved_pricing.get("image", {}))
     merged["pricing"]["videoPerSecond"].update(saved_pricing.get("videoPerSecond", {}))
@@ -2583,6 +2594,8 @@ def save_app_config(patch: dict) -> dict:
         config["nsfwEnabled"] = patch["nsfwEnabled"]
     if isinstance(patch.get("spendCapUsd"), (int, float)) and not isinstance(patch.get("spendCapUsd"), bool):
         config["spendCapUsd"] = max(0, float(patch["spendCapUsd"]))
+    if isinstance(patch.get("seedControlEnabled"), bool):
+        config["seedControlEnabled"] = patch["seedControlEnabled"]
     if "pricing" in patch:
         p = patch["pricing"]
         if "image" in p:
@@ -2827,6 +2840,18 @@ def save_result_to_gallery(
     entries.insert(0, entry)  # newest first
     save_gallery(entries)
     return entry
+
+
+def set_gallery_favorite(filename: str, favorite: bool) -> dict | None:
+    """Flips one entry's "favorite" flag in place. Returns the updated entry,
+    or None if no entry with that filename exists."""
+    entries = load_gallery()
+    for entry in entries:
+        if entry.get("filename") == filename:
+            entry["favorite"] = bool(favorite)
+            save_gallery(entries)
+            return entry
+    return None
 
 
 def delete_from_gallery(filename: str) -> bool:
@@ -3385,6 +3410,17 @@ class Handler(BaseHTTPRequestHandler):
                 body = self._read_json_body()
                 removed = delete_from_gallery(body["filename"])
                 self._send_json(200, {"removed": removed})
+            except Exception as e:
+                self._send_json(400, {"error": str(e)})
+            return
+
+        if self.path == "/api/gallery-favorite":
+            try:
+                body = self._read_json_body()
+                entry = set_gallery_favorite(body["filename"], bool(body.get("favorite")))
+                if entry is None:
+                    raise RuntimeError("No gallery entry with that filename.")
+                self._send_json(200, {"entry": entry})
             except Exception as e:
                 self._send_json(400, {"error": str(e)})
             return
