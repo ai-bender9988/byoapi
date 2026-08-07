@@ -717,16 +717,25 @@
     background: rgba(0,0,0,0.8);
     z-index: 1000;
     display: none;
-    align-items: center;
-    justify-content: center;
     opacity: 0;
     transition: opacity 0.15s ease;
     overflow: auto;
   }
+  /* display:flex + margin:auto on the image (rather than align-items/
+     justify-content:center on this container) is deliberate: with
+     center-alignment on the container instead, a browser's scroll
+     overflow region only covers the trailing (bottom/right) side of
+     content bigger than the viewport — the leading (top/left) side that
+     gets pushed off-screen by the centering becomes unreachable by
+     scrolling. margin:auto centers the same way when the image fits, but
+     keeps the full overflow scrollable in every direction once the image
+     (at native size) is bigger than the screen — confirmed via a live
+     16:9 image where the top was otherwise unreachable. */
   .lightbox-backdrop.active { display: flex; opacity: 1; }
   .lightbox-img {
     max-width: 92vw;
     max-height: 92vh;
+    margin: auto;
     object-fit: contain;
     border-radius: 8px;
     box-shadow: 0 10px 40px rgba(0,0,0,0.6);
@@ -744,7 +753,10 @@
   .lightbox-img.native {
     max-width: none;
     max-height: none;
-    cursor: zoom-out;
+    cursor: grab;
+  }
+  .lightbox-img.native.dragging {
+    cursor: grabbing;
   }
   .lightbox-close-btn {
     position: fixed;
@@ -764,6 +776,25 @@
     cursor: pointer;
   }
   .lightbox-close-btn:hover { background: rgba(0,0,0,0.8); }
+  .lightbox-favorite-btn {
+    position: fixed;
+    top: 18px;
+    right: 64px;
+    z-index: 1001;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.3);
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    font-size: 1.1rem;
+    line-height: 34px;
+    text-align: center;
+    padding: 0;
+    cursor: pointer;
+  }
+  .lightbox-favorite-btn:hover { background: rgba(0,0,0,0.8); }
+  .lightbox-favorite-btn.active { background: #d9a02b; border-color: #d9a02b; }
 
   /* Options panel — a modal overlay, same layering approach as the
      lightbox above but for a form instead of media. */
@@ -1364,7 +1395,6 @@
           <option value="grok-imagine-video-1-5">Grok Imagine Video 1.5 Preview (fast, via kie.ai)</option>
           <option value="hailuo-02-i2v-standard">Hailuo 02 Standard (fast, via kie.ai)</option>
         </select>
-        <div class="hint">LTX 2.3 needs the ComfyUI server configured on the Video tab. Seedance 1.5 Pro, Grok Imagine Video 1.5, and Hailuo 02 Standard all run entirely on kie.ai — no local server, but shorter/lower-res clips (480p/512P).</div>
         <div class="status" id="story-status"></div>
       </div>
 
@@ -1387,24 +1417,15 @@
           <label>ComfyUI server URL</label>
           <input type="text" id="comfyui-server-url" placeholder="http://192.168.1.50:8188">
           <div class="hint">Saved on this machine so you don't have to re-enter it — change it any time your ComfyUI server's address changes. Uses your own exported "LTX 2.3" workflow (comfyui_workflows/ltx-2.3.json) — everything except the source image, prompt, duration, seed, and resolution comes straight from that file, unchanged.</div>
-          <div class="row2">
-            <div>
-              <label>Resolution</label>
-              <select id="comfyui-short-side">
-                <option value="540">540px</option>
-                <option value="720">720px</option>
-                <option value="1080">1080px</option>
-              </select>
-            </div>
-            <div>
-              <label>Applies to</label>
-              <select id="comfyui-scale-mode">
-                <option value="shorter">Shorter side</option>
-                <option value="longer">Longer side</option>
-              </select>
-            </div>
-          </div>
-          <div class="hint">Sets the workflow's resize target on whichever side you pick — the other side follows automatically from the source image's own aspect ratio. Also saved on this machine.</div>
+          <label>Resolution</label>
+          <select id="comfyui-resolution">
+            <option value="432x768">432×768 (9:16 portrait)</option>
+            <option value="576x1024">576×1024 (9:16 portrait, larger)</option>
+            <option value="768x432">768×432 (16:9 landscape)</option>
+            <option value="1024x576">1024×576 (16:9 landscape, larger)</option>
+            <option value="768x768">768×768 (1:1 square)</option>
+          </select>
+          <div class="hint">The workflow resizes your source image to fit this canvas (snapped to a multiple of 32), or renders directly at this size for text-to-video. Saved on this machine.</div>
         </div>
 
         <div id="video-first-frame-toggle-wrap" class="video-first-frame-toggle-wrap" style="display:none;">
@@ -1447,7 +1468,7 @@
         </div>
 
         <div class="row2">
-          <div>
+          <div id="video-duration-wrap">
             <label>Duration</label>
             <select id="video-duration-select"></select>
             <input type="number" id="video-duration-number" min="4" max="15" step="1" value="8" style="display:none;">
@@ -1600,6 +1621,22 @@
     <button class="secondary-btn" id="story-generate-all-stop-btn" type="button" style="display:none;">⏹ Stop</button>
   </div>
   <div class="status" id="story-generate-all-status"></div>
+
+  <div class="row2" id="story-generate-all-videos-settings-row" style="display:none; margin-top:14px;">
+    <div>
+      <label>Duration</label>
+      <select id="story-generate-all-videos-duration"></select>
+    </div>
+    <div id="story-generate-all-videos-resolution-wrap">
+      <label>Resolution</label>
+      <select id="story-generate-all-videos-resolution"></select>
+    </div>
+  </div>
+  <div class="row2" id="story-generate-all-videos-row" style="display:none; margin-top:14px;">
+    <button class="secondary-btn" id="story-generate-all-videos-btn" type="button">▶ Generate all videos</button>
+    <button class="secondary-btn" id="story-generate-all-videos-stop-btn" type="button" style="display:none;">⏹ Stop</button>
+  </div>
+  <div class="status" id="story-generate-all-videos-status"></div>
 
   <div class="row2" id="story-save-row" style="display:none; margin-top:14px;">
     <button class="secondary-btn" id="story-save-btn" type="button">💾 Save story</button>
@@ -1906,11 +1943,11 @@ const VIDEO_MODELS = {
   "comfyui-ltx": {
     backend: "comfyui", // runs on the user's own ComfyUI server, not kie.ai — see runComfyUIJob()
     apiModel: null,
-    imageMode: "required", // exactly 1 image, matches the workflow's single LoadImage node
+    imageMode: "optional", // 0 or 1 image — text-to-video with none, image-to-video with one (workflow's built-in t2v_mode toggle)
     maxImages: 1,
-    durations: [5, 10, 15, 20], // proxy.py converts to frames as seconds*24+1, matching the workflow's own convention
+    durations: [5, 10, 15, 20], // the workflow itself converts seconds -> frames, any value works, but keep the same fixed set as before
     hasAudio: false,
-    hasAspectRatio: false, // output size follows the source image via the workflow's own resize node
+    hasAspectRatio: false, // resolution is a fixed-preset dropdown (comfyui-resolution) instead — see comfyui-server-wrap
   },
 };
 
@@ -2059,7 +2096,20 @@ const STORY_VIDEO_ENGINE_DURATIONS = {
   "grok-imagine-video-1-5": [6, 10, 15, 20, 30],
   "hailuo-02-i2v-standard": [6, 10], // the only two values kie.ai's docs allow for this model
 };
-storyVideoEngineEl.addEventListener("change", renderStoryScenes);
+// Resolution options per Story-tab video engine, for the "Generate all
+// videos" bulk resolution picker — null for comfyui-ltx since that one's
+// resolution is the Video tab's separate ComfyUI width/height config, not
+// a per-job field at all. The other three are real kie.ai
+// enum values confirmed in VIDEO_MODELS' own comments (seedance-1-5-pro
+// has just the one tier this app offers; the other two have a documented
+// second tier this app used to lock out entirely).
+const STORY_VIDEO_ENGINE_RESOLUTIONS = {
+  "comfyui-ltx": null,
+  "seedance-1-5-pro": ["480p"],
+  "grok-imagine-video-1-5": ["480p", "720p"],
+  "hailuo-02-i2v-standard": ["512P", "768P"],
+};
+storyVideoEngineEl.addEventListener("change", () => { renderStoryScenes(); updateStoryBulkVideoControls(); });
 const storyStatusEl = document.getElementById("story-status");
 const storyScenesEl = document.getElementById("story-scenes");
 const storyScenesPageEl = document.getElementById("story-scenes-page");
@@ -2068,6 +2118,39 @@ const storyGenerateAllBtn = document.getElementById("story-generate-all-btn");
 const storyGenerateAllStopBtn = document.getElementById("story-generate-all-stop-btn");
 const storyGenerateAllStatusEl = document.getElementById("story-generate-all-status");
 let storyGenerateAllStopRequested = false;
+const storyGenerateAllVideosSettingsRow = document.getElementById("story-generate-all-videos-settings-row");
+const storyGenerateAllVideosDurationEl = document.getElementById("story-generate-all-videos-duration");
+const storyGenerateAllVideosResolutionWrap = document.getElementById("story-generate-all-videos-resolution-wrap");
+const storyGenerateAllVideosResolutionEl = document.getElementById("story-generate-all-videos-resolution");
+const storyGenerateAllVideosRow = document.getElementById("story-generate-all-videos-row");
+const storyGenerateAllVideosBtn = document.getElementById("story-generate-all-videos-btn");
+const storyGenerateAllVideosStopBtn = document.getElementById("story-generate-all-videos-stop-btn");
+const storyGenerateAllVideosStatusEl = document.getElementById("story-generate-all-videos-status");
+let storyGenerateAllVideosStopRequested = false;
+
+// Populates the "Generate all videos" duration/resolution pickers for
+// whichever engine is currently selected — called on engine change and
+// whenever the scenes grid (re)renders, since the row is hidden until
+// there are scenes at all.
+function updateStoryBulkVideoControls() {
+  const engine = storyVideoEngineEl.value;
+  const durations = STORY_VIDEO_ENGINE_DURATIONS[engine];
+  const previousDuration = Number(storyGenerateAllVideosDurationEl.value);
+  const keepDuration = durations.includes(previousDuration) ? previousDuration : durations[0];
+  storyGenerateAllVideosDurationEl.innerHTML = durations.map(s => `<option value="${s}" ${s === keepDuration ? "selected" : ""}>${s}s</option>`).join("");
+
+  const resolutions = STORY_VIDEO_ENGINE_RESOLUTIONS[engine];
+  if (!resolutions) {
+    // comfyui-ltx: resolution lives in the Video tab's ComfyUI config instead.
+    storyGenerateAllVideosResolutionWrap.style.display = "none";
+    storyGenerateAllVideosResolutionEl.innerHTML = "";
+  } else {
+    storyGenerateAllVideosResolutionWrap.style.display = resolutions.length > 1 ? "" : "none";
+    const previousResolution = storyGenerateAllVideosResolutionEl.value;
+    const keepResolution = resolutions.includes(previousResolution) ? previousResolution : resolutions[0];
+    storyGenerateAllVideosResolutionEl.innerHTML = resolutions.map(r => `<option value="${r}" ${r === keepResolution ? "selected" : ""}>${r}</option>`).join("");
+  }
+}
 const storySaveRow = document.getElementById("story-save-row");
 const storySaveBtn = document.getElementById("story-save-btn");
 const storySaveStatusEl = document.getElementById("story-save-status");
@@ -2079,8 +2162,7 @@ let savedStories = [];
 const videoModelSelect = document.getElementById("video-model-select");
 const comfyuiServerWrap = document.getElementById("comfyui-server-wrap");
 const comfyuiServerUrlEl = document.getElementById("comfyui-server-url");
-const comfyuiShortSideEl = document.getElementById("comfyui-short-side");
-const comfyuiScaleModeEl = document.getElementById("comfyui-scale-mode");
+const comfyuiResolutionEl = document.getElementById("comfyui-resolution");
 const videoFirstFrameToggleWrap = document.getElementById("video-first-frame-toggle-wrap");
 const videoFirstFrameToggle = document.getElementById("video-first-frame-toggle");
 const videoImageSection = document.getElementById("video-image-section");
@@ -2096,6 +2178,7 @@ const videoVideoThumbGrid = document.getElementById("video-video-thumb-grid");
 const videoPromptEl = document.getElementById("video-prompt");
 const videoNegativeWrap = document.getElementById("video-negative-wrap");
 const videoNegativePromptEl = document.getElementById("video-negative-prompt");
+const videoDurationWrap = document.getElementById("video-duration-wrap");
 const videoDurationSelect = document.getElementById("video-duration-select");
 const videoDurationNumber = document.getElementById("video-duration-number");
 const videoAspectWrap = document.getElementById("video-aspect-wrap");
@@ -2563,6 +2646,15 @@ assistantGenerateBtn.addEventListener("click", async () => {
   }
   const modeKey = currentAssistantMode();
   const imagesForTurn = assistantImages.map(img => img.base64);
+  // Video modes' system prompts (SEEDANCE_I2V_SYSTEM, VIDEO_LTX_MOTION_SYSTEM,
+  // etc.) expect to be told the clip length so pacing/detail density can
+  // match it — the Story tab's equivalent endpoint already does this (see
+  // generateSceneVideo's "Clip length: X seconds." line); this mirrors that
+  // for the standalone Video tab, which previously never told Grok the
+  // duration at all. Appended to what's actually sent, not to what's shown
+  // in the conversation history below, so the visible transcript stays
+  // exactly what the user typed.
+  const briefForApi = mode === "video" ? `${brief}\n\n(Clip length: ${getVideoDuration()} seconds.)` : brief;
 
   assistantStatusEl.textContent = "Asking Grok...";
   assistantStatusEl.className = "status";
@@ -2581,7 +2673,7 @@ assistantGenerateBtn.addEventListener("click", async () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        brief,
+        brief: briefForApi,
         mode: modeKey,
         images: imagesForTurn,
         history: historyPayload,
@@ -2738,10 +2830,12 @@ function updateVideoModelUI() {
 
   // Duration: discrete select vs free numeric range
   if (cfg.durations) {
+    videoDurationWrap.style.display = "";
     videoDurationSelect.style.display = "block";
     videoDurationNumber.style.display = "none";
     videoDurationSelect.innerHTML = cfg.durations.map(d => `<option value="${d}">${d} seconds</option>`).join("");
   } else {
+    videoDurationWrap.style.display = "";
     videoDurationSelect.style.display = "none";
     videoDurationNumber.style.display = "block";
     videoDurationNumber.min = cfg.durationRange[0];
@@ -3579,10 +3673,15 @@ function renderStoryScenes() {
     storyScenesEl.innerHTML = "";
     storySaveRow.style.display = "none";
     storyGenerateAllRow.style.display = "none";
+    storyGenerateAllVideosSettingsRow.style.display = "none";
+    storyGenerateAllVideosRow.style.display = "none";
     return;
   }
   storySaveRow.style.display = currentStory ? "" : "none";
   storyGenerateAllRow.style.display = "";
+  storyGenerateAllVideosSettingsRow.style.display = "";
+  storyGenerateAllVideosRow.style.display = "";
+  updateStoryBulkVideoControls();
   // Scene image/video cells follow the currently-selected scene aspect
   // ratio (e.g. 9:16 for portrait stories) rather than being hardcoded to
   // 16:9 — set once here via a CSS variable so every card picks it up.
@@ -3748,7 +3847,60 @@ storyScenesEl.addEventListener("input", (e) => {
 // itself toggles between that fit-to-screen size and native pixel size
 // (scrollable if larger than the viewport) — it does NOT close the
 // lightbox. Closing only happens via the backdrop (clicking outside the
-// image), the × button, or Escape.
+// image), the × button, or Escape. While at native size, click-and-drag
+// pans the image (via the backdrop's own scroll position) instead of
+// relying on scrollbars — a plain click (no movement) still toggles back
+// to fit-to-screen, distinguished from a drag by a small movement
+// threshold tracked in lightboxDragState below.
+//
+// Optional prev/next navigation: openLightbox's 2nd/3rd args are an entry
+// array (each needs a `.url`) and the clicked entry's index within it —
+// when given, Left/Right arrow keys step through that exact list (wrapping
+// at both ends). The Gallery passes its currently filtered, image-only
+// entries; the Story scene grid doesn't pass anything, so arrow keys are a
+// no-op there — single-image viewing only, unchanged from before.
+let lightboxNavEntries = null;
+let lightboxNavIndex = -1;
+function navigateLightbox(direction) {
+  if (!lightboxNavEntries || !lightboxNavEntries.length) return;
+  lightboxNavIndex = (lightboxNavIndex + direction + lightboxNavEntries.length) % lightboxNavEntries.length;
+  const img = document.getElementById("lightbox-img");
+  img.classList.remove("native");
+  img.src = lightboxNavEntries[lightboxNavIndex].url;
+  updateLightboxFavoriteButton(img.src);
+}
+
+// Looks up the gallery entry (if any) behind whatever's currently shown in
+// the lightbox, matched by URL path so it works regardless of whether the
+// caller passed an absolute or relative one — the Gallery grid passes
+// img.src (absolute); Story scene images use the same /outputs/... URLs
+// too (they're saved to the gallery same as everything else), so this
+// generally finds a match there too even though the Story tab doesn't pass
+// nav entries.
+function findGalleryEntryForLightboxUrl(url) {
+  if (!url) return null;
+  const path = new URL(url, window.location.href).pathname;
+  return galleryEntries.find(e => new URL(e.url, window.location.href).pathname === path) || null;
+}
+
+// Shows/hides the lightbox's ★ button and syncs its pressed state to
+// whichever gallery entry (if any) the currently-displayed image belongs
+// to — called on open and on every prev/next navigation.
+function updateLightboxFavoriteButton(url) {
+  const btn = document.getElementById("lightbox-favorite-btn");
+  if (!btn) return;
+  const entry = findGalleryEntryForLightboxUrl(url);
+  if (!entry) {
+    btn.style.display = "none";
+    delete btn.dataset.favoriteFilename;
+    return;
+  }
+  btn.style.display = "";
+  btn.classList.toggle("active", !!entry.favorite);
+  btn.title = entry.favorite ? "Remove from favorites" : "Add to favorites";
+  btn.dataset.favoriteFilename = entry.filename;
+}
+
 function ensureLightbox() {
   let backdrop = document.getElementById("lightbox-backdrop");
   if (!backdrop) {
@@ -3757,29 +3909,85 @@ function ensureLightbox() {
     backdrop.className = "lightbox-backdrop";
     backdrop.innerHTML = `
       <img class="lightbox-img" id="lightbox-img" alt="">
+      <button class="lightbox-favorite-btn" id="lightbox-favorite-btn" type="button" title="Add to favorites">&#9733;</button>
       <button class="lightbox-close-btn" id="lightbox-close-btn" type="button" title="Close">&times;</button>
     `;
+    const lbImg = backdrop.querySelector("#lightbox-img");
+    let lightboxDragState = null;
     backdrop.addEventListener("click", closeLightbox);
-    backdrop.querySelector("#lightbox-img").addEventListener("click", (e) => {
+    lbImg.addEventListener("mousedown", (e) => {
+      if (!lbImg.classList.contains("native")) return;
+      e.preventDefault(); // suppress the browser's native image-drag ghost
+      lightboxDragState = {
+        startX: e.clientX, startY: e.clientY,
+        startScrollLeft: backdrop.scrollLeft, startScrollTop: backdrop.scrollTop,
+        moved: false,
+      };
+      lbImg.classList.add("dragging");
+    });
+    document.addEventListener("mousemove", (e) => {
+      if (!lightboxDragState) return;
+      const dx = e.clientX - lightboxDragState.startX;
+      const dy = e.clientY - lightboxDragState.startY;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) lightboxDragState.moved = true;
+      backdrop.scrollLeft = lightboxDragState.startScrollLeft - dx;
+      backdrop.scrollTop = lightboxDragState.startScrollTop - dy;
+    });
+    document.addEventListener("mouseup", () => {
+      if (!lightboxDragState) return;
+      lbImg.classList.remove("dragging");
+      lbImg.dataset.justDragged = lightboxDragState.moved ? "1" : "";
+      lightboxDragState = null;
+    });
+    lbImg.addEventListener("click", (e) => {
       e.stopPropagation();
-      document.getElementById("lightbox-img").classList.toggle("native");
+      if (lbImg.dataset.justDragged === "1") { lbImg.dataset.justDragged = ""; return; }
+      lbImg.classList.toggle("native");
     });
     backdrop.querySelector("#lightbox-close-btn").addEventListener("click", (e) => {
       e.stopPropagation();
       closeLightbox();
     });
+    backdrop.querySelector("#lightbox-favorite-btn").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const btn = e.currentTarget;
+      const filename = btn.dataset.favoriteFilename;
+      const entry = filename ? galleryEntries.find(en => en.filename === filename) : null;
+      if (!entry) return;
+      const nextFavorite = !entry.favorite;
+      try {
+        const res = await fetch("/api/gallery-favorite", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename, favorite: nextFavorite }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to update favorite.");
+        entry.favorite = nextFavorite;
+        updateLightboxFavoriteButton(lbImg.src);
+        renderGallery(galleryEntries); // keeps the grid's own ★ in sync if it's visible underneath
+      } catch (err) {
+        // fail silently — same tolerance as the rest of the lightbox's interactions
+      }
+    });
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") closeLightbox();
+      if (!backdrop.classList.contains("active")) return;
+      if (e.key === "Escape") { closeLightbox(); return; }
+      if (e.key === "ArrowLeft") { e.preventDefault(); navigateLightbox(-1); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); navigateLightbox(1); }
     });
     document.body.appendChild(backdrop);
   }
   return backdrop;
 }
-function openLightbox(src) {
+function openLightbox(src, navEntries, navIndex) {
   const backdrop = ensureLightbox();
   const img = document.getElementById("lightbox-img");
   img.classList.remove("native");
   img.src = src;
+  lightboxNavEntries = navEntries || null;
+  lightboxNavIndex = navEntries ? navIndex : -1;
+  updateLightboxFavoriteButton(src);
   backdrop.classList.add("active");
 }
 function closeLightbox() {
@@ -3888,6 +4096,81 @@ storyGenerateAllStopBtn.addEventListener("click", () => {
   storyGenerateAllStatusEl.className = "status";
 });
 
+// Same pattern as "Generate all scenes" above, one step later in the
+// pipeline: generates a video for every scene that already has a
+// generated image and doesn't already have a finished video, in order,
+// awaiting each one before starting the next (generateSceneVideo() only
+// resolves once its job is done or errored). Always uses whichever engine
+// is currently selected in the Story tab's video-engine dropdown — same
+// as clicking "Generate video" on a scene by hand. Scenes with no image
+// yet are skipped (use "Generate all scenes" first, or generate that
+// scene's image by hand) rather than blocking the whole run.
+storyGenerateAllVideosBtn.addEventListener("click", async () => {
+  const engine = storyVideoEngineEl.value;
+  if (engine === "comfyui-ltx" && !comfyuiServerUrlEl.value.trim()) {
+    storyGenerateAllVideosStatusEl.textContent = "Set the ComfyUI server URL on the Video tab first.";
+    storyGenerateAllVideosStatusEl.className = "status error";
+    return;
+  }
+  const pendingCount = storyScenes.filter((scene, idx) => {
+    const imageJob = scene.jobId ? jobs.find(j => j.id === scene.jobId) : null;
+    const hasImage = (imageJob && imageJob.status === "done" && imageJob.imageUrl) || scene.generatedImageUrl;
+    if (!hasImage) return false;
+    const videoJob = scene.videoJobId ? jobs.find(j => j.id === scene.videoJobId) : null;
+    return !(videoJob && videoJob.status === "done");
+  }).length;
+  if (!pendingCount) {
+    storyGenerateAllVideosStatusEl.textContent = "Nothing to do — every scene with an image already has a finished video.";
+    storyGenerateAllVideosStatusEl.className = "status";
+    return;
+  }
+  const bulkDuration = Number(storyGenerateAllVideosDurationEl.value);
+  const bulkResolution = STORY_VIDEO_ENGINE_RESOLUTIONS[engine] ? storyGenerateAllVideosResolutionEl.value : null;
+  const engineLabel = storyVideoEngineEl.selectedOptions[0]?.textContent.trim() || engine;
+  const settingsLabel = `${bulkDuration}s` + (bulkResolution ? `, ${bulkResolution}` : "");
+  if (!confirm(`Generate ${pendingCount} video${pendingCount === 1 ? "" : "s"} with ${engineLabel} (${settingsLabel})? ${engine === "comfyui-ltx" ? "This runs on your own ComfyUI server." : "This calls kie.ai and costs real money per clip."} Are you sure?`)) {
+    return;
+  }
+  storyGenerateAllVideosBtn.disabled = true;
+  storyGenerateAllVideosStopRequested = false;
+  storyGenerateAllVideosStopBtn.disabled = false;
+  storyGenerateAllVideosStopBtn.style.display = "";
+  try {
+    let skippedNoImage = 0;
+    for (let idx = 0; idx < storyScenes.length; idx++) {
+      if (storyGenerateAllVideosStopRequested) {
+        storyGenerateAllVideosStatusEl.textContent = `Stopped after scene ${idx} of ${storyScenes.length}.`;
+        storyGenerateAllVideosStatusEl.className = "status";
+        return;
+      }
+      const scene = storyScenes[idx];
+      const imageJob = scene.jobId ? jobs.find(j => j.id === scene.jobId) : null;
+      const hasImage = (imageJob && imageJob.status === "done" && imageJob.imageUrl) || scene.generatedImageUrl;
+      if (!hasImage) { skippedNoImage++; continue; }
+      const videoJob = scene.videoJobId ? jobs.find(j => j.id === scene.videoJobId) : null;
+      if (videoJob && videoJob.status === "done") continue;
+      scene.videoDuration = bulkDuration;
+      storyGenerateAllVideosStatusEl.textContent = `Generating video for scene ${scene.scene_number} of ${storyScenes.length}...`;
+      storyGenerateAllVideosStatusEl.className = "status";
+      await generateSceneVideo(idx, bulkResolution);
+    }
+    storyGenerateAllVideosStatusEl.textContent = skippedNoImage
+      ? `Done — ${skippedNoImage} scene(s) skipped (no image generated yet).`
+      : "Done generating all videos.";
+    storyGenerateAllVideosStatusEl.className = "status success";
+  } finally {
+    storyGenerateAllVideosBtn.disabled = false;
+    storyGenerateAllVideosStopBtn.style.display = "none";
+  }
+});
+
+storyGenerateAllVideosStopBtn.addEventListener("click", () => {
+  storyGenerateAllVideosStopRequested = true;
+  storyGenerateAllVideosStopBtn.disabled = true;
+  storyGenerateAllVideosStatusEl.textContent = "Stopping after the current video finishes...";
+  storyGenerateAllVideosStatusEl.className = "status";
+});
+
 // Returns once the scene's job has finished (done or error) so "Generate
 // all scenes" can await it before starting the next one — continuity
 // chaining needs the previous scene's job to actually be "done" (see
@@ -3938,7 +4221,7 @@ async function generateSceneImage(sceneIndex) {
 // scene's narration for context, plus the chosen duration for pacing —
 // STORY_LTX_MOTION_SYSTEM or SEEDANCE_I2V_SYSTEM in proxy.py depending on
 // engine), then queues that straight into the matching pipeline.
-async function generateSceneVideo(sceneIndex) {
+async function generateSceneVideo(sceneIndex, resolutionOverride) {
   const scene = storyScenes[sceneIndex];
   if (!scene) return;
   const job = scene.jobId ? jobs.find(j => j.id === scene.jobId) : null;
@@ -3962,6 +4245,12 @@ async function generateSceneVideo(sceneIndex) {
     mode: "video",
     videoModelKey: engine,
     duration: seconds,
+    // Only "Generate all videos" passes this (per its own resolution
+    // picker, see storyGenerateAllVideosResolutionEl) — the per-scene "🎬
+    // Video" button leaves it undefined, so createTaskForJob() falls back
+    // to VIDEO_MODELS' fixed default for the engine, same as before this
+    // existed.
+    resolution: resolutionOverride || undefined,
     aspectRatio: storyAspectRatioEl.value,
     generateAudio: false,
     status: "pending",
@@ -4772,7 +5061,7 @@ async function createTaskForJob(job) {
         prompt: job.prompt,
         image_urls: imageUrls,
         duration: job.duration,
-        resolution: cfg.resolution,
+        resolution: job.resolution || cfg.resolution,
         nsfw_checker: false,
       };
     } else if (job.videoModelKey === "wan-2-7-i2v") {
@@ -4781,7 +5070,7 @@ async function createTaskForJob(job) {
         prompt: job.prompt,
         negative_prompt: job.negativePrompt,
         first_frame_url: imageUrls[0],
-        resolution: cfg.resolution,
+        resolution: job.resolution || cfg.resolution,
         duration: Number(job.duration),
         prompt_extend: true,
         watermark: false,
@@ -4795,7 +5084,7 @@ async function createTaskForJob(job) {
         prompt: job.prompt,
         negative_prompt: job.negativePrompt,
         reference_image: imageUrls,
-        resolution: cfg.resolution,
+        resolution: job.resolution || cfg.resolution,
         aspect_ratio: job.aspectRatio,
         duration: Number(job.duration),
         prompt_extend: true,
@@ -4813,7 +5102,7 @@ async function createTaskForJob(job) {
         prompt: job.prompt,
         input_urls: inputUrls, // always present (empty array for text-only), matching kie.ai's documented example
         aspect_ratio: job.aspectRatio, // per docs: ignored server-side if an image is uploaded, but still expected as a field
-        resolution: cfg.resolution,
+        resolution: job.resolution || cfg.resolution,
         duration: Number(job.duration),
         fixed_lens: false,
         generate_audio: job.generateAudio,
@@ -4826,7 +5115,7 @@ async function createTaskForJob(job) {
         // kie.ai's own docs type "duration" as a string ("6-30"), unlike
         // every other model's numeric duration field here — sent as-is.
         duration: String(job.duration),
-        resolution: cfg.resolution,
+        resolution: job.resolution || cfg.resolution,
         // aspect_ratio is a strict enum here (unlike every other video model
         // in this app) — see GROK_IMAGINE_VIDEO_ASPECT_RATIOS' comment above.
         // job.aspectRatio can be any Story/Video tab ratio (e.g. "4:3"),
@@ -4847,7 +5136,7 @@ async function createTaskForJob(job) {
         prompt: job.prompt,
         image_url: imageUrls[0],
         duration: String(job.duration),
-        resolution: cfg.resolution,
+        resolution: job.resolution || cfg.resolution,
         nsfw_checker: false, // documented default is already false; explicit here for consistency with wan-2-6-i2v above
       };
       if (imageUrls[1]) input.end_image_url = imageUrls[1];
@@ -4862,7 +5151,7 @@ async function createTaskForJob(job) {
       const imageUrls = await uploadAllSourceImages(job.sourceImages, job.id);
       input = {
         prompt: job.prompt,
-        resolution: cfg.resolution,
+        resolution: job.resolution || cfg.resolution,
         aspect_ratio: job.aspectRatio,
         duration: Number(job.duration),
         generate_audio: job.generateAudio,
@@ -4909,9 +5198,9 @@ async function createTaskForJob(job) {
 // text-to-image ever returns more than one, see runJob() for how that
 // case is handled).
 async function pollTaskForJob(taskId, jobId) {
-  const maxAttempts = 120; // ~ at 3s interval -> 6 min max
+  const maxAttempts = 40; // ~ at 10s interval -> ~6.5 min max
   for (let i = 0; i < maxAttempts; i++) {
-    await new Promise(r => setTimeout(r, 3000));
+    await new Promise(r => setTimeout(r, 10000));
     const res = await fetch(`/api/task-status?taskId=${encodeURIComponent(taskId)}`);
     const data = await res.json();
     const state = data?.data?.state;
@@ -4939,50 +5228,61 @@ const GALLERY_PAGE_SIZE = 24;
 let galleryEntries = [];
 let galleryShownCount = GALLERY_PAGE_SIZE;
 
+const GALLERY_IMAGE_MODEL_LABELS = {
+  "seedream-5-pro": "Seedream 5 Pro",
+  "wan-2-7-image": "WAN 2.7 Image",
+  "grok-imagine": "Grok Imagine",
+};
+const GALLERY_VIDEO_MODEL_LABELS = {
+  "wan-2-6-i2v": "Wan 2.6",
+  "wan-2-7-i2v": "Wan 2.7 I2V",
+  "wan-2-7-r2v": "Wan 2.7 R2V",
+  "seedance-1-5-pro": "Seedance 1.5 Pro",
+  "seedance-2": "Seedance 2",
+  "seedance-2-fast": "Seedance 2 Fast",
+  "seedance-2-mini": "Seedance 2 Mini",
+  "grok-imagine-video-1-5": "Grok Imagine Video 1.5",
+  "hailuo-02-i2v-standard": "Hailuo 02 Standard",
+};
+const galleryModelKeyFor = e => e.mode === "video" ? e.video_model_key : e.image_model_key;
+const galleryModelLabelFor = e => e.mode === "video"
+  ? (GALLERY_VIDEO_MODEL_LABELS[e.video_model_key] || e.video_model_key || "video")
+  : (GALLERY_IMAGE_MODEL_LABELS[e.image_model_key] || e.image_model_key || "image");
+
+// Shared by renderGallery() and the lightbox's prev/next navigation, so
+// arrow-key browsing stays limited to whatever the search/model/favorites
+// filters currently show — never the full unfiltered gallery.
+function getFilteredGalleryEntries() {
+  const q = gallerySearchEl.value.trim().toLowerCase();
+  const modelFilterValue = galleryModelFilterEl.value;
+  const favoritesOnly = galleryFavoritesOnlyEl.checked;
+  return galleryEntries.filter(e => {
+    if (q && !(e.prompt || "").toLowerCase().includes(q)) return false;
+    if (modelFilterValue && galleryModelKeyFor(e) !== modelFilterValue) return false;
+    if (favoritesOnly && !e.favorite) return false;
+    return true;
+  });
+}
+
 function renderGallery(entries) {
   galleryEntries = entries;
-  const IMAGE_MODEL_LABELS = {
-    "seedream-5-pro": "Seedream 5 Pro",
-    "wan-2-7-image": "WAN 2.7 Image",
-    "grok-imagine": "Grok Imagine",
-  };
-  const VIDEO_MODEL_LABELS = {
-    "wan-2-6-i2v": "Wan 2.6",
-    "wan-2-7-i2v": "Wan 2.7 I2V",
-    "wan-2-7-r2v": "Wan 2.7 R2V",
-    "seedance-1-5-pro": "Seedance 1.5 Pro",
-    "seedance-2": "Seedance 2",
-    "seedance-2-fast": "Seedance 2 Fast",
-    "seedance-2-mini": "Seedance 2 Mini",
-    "grok-imagine-video-1-5": "Grok Imagine Video 1.5",
-    "hailuo-02-i2v-standard": "Hailuo 02 Standard",
-  };
-  const modelKeyFor = e => e.mode === "video" ? e.video_model_key : e.image_model_key;
-  const modelLabelFor = e => e.mode === "video" ? (VIDEO_MODEL_LABELS[e.video_model_key] || e.video_model_key || "video") : (IMAGE_MODEL_LABELS[e.image_model_key] || e.image_model_key || "image");
 
   // Keep the model-filter dropdown's options in sync with whatever models
   // actually appear in the gallery, without clobbering the user's current
   // selection mid-session (e.g. right after a new job of a new-to-them
   // model lands while they have a filter open).
-  const presentModelKeys = [...new Set(galleryEntries.map(modelKeyFor).filter(Boolean))];
+  const presentModelKeys = [...new Set(galleryEntries.map(galleryModelKeyFor).filter(Boolean))];
   const previousModelFilterValue = galleryModelFilterEl.value;
   galleryModelFilterEl.innerHTML = `<option value="">All models</option>` + presentModelKeys
     .map(key => {
-      const entry = galleryEntries.find(e => modelKeyFor(e) === key);
-      return `<option value="${key}">${escapeHtml(modelLabelFor(entry))}</option>`;
+      const entry = galleryEntries.find(e => galleryModelKeyFor(e) === key);
+      return `<option value="${key}">${escapeHtml(galleryModelLabelFor(entry))}</option>`;
     })
     .join("");
   if (presentModelKeys.includes(previousModelFilterValue)) galleryModelFilterEl.value = previousModelFilterValue;
 
   const q = gallerySearchEl.value.trim().toLowerCase();
-  const modelFilterValue = galleryModelFilterEl.value;
-  const favoritesOnly = galleryFavoritesOnlyEl.checked;
-  const filtered = galleryEntries.filter(e => {
-    if (q && !(e.prompt || "").toLowerCase().includes(q)) return false;
-    if (modelFilterValue && modelKeyFor(e) !== modelFilterValue) return false;
-    if (favoritesOnly && !e.favorite) return false;
-    return true;
-  });
+  const filtered = getFilteredGalleryEntries();
   if (!galleryEntries.length) {
     galleryGrid.innerHTML = "";
     galleryGrid.appendChild(galleryEmpty);
@@ -4996,7 +5296,7 @@ function renderGallery(entries) {
   galleryGrid.innerHTML = shown.map(entry => {
     const promptAttr = (entry.prompt || "").replace(/"/g, "&quot;");
     const isVideo = entry.mode === "video";
-    const captionLabel = entry.mode === "i2i" ? "img2img" : (isVideo ? modelLabelFor(entry) : "txt2img");
+    const captionLabel = entry.mode === "i2i" ? "img2img" : (isVideo ? galleryModelLabelFor(entry) : "txt2img");
     const captionDetail = isVideo ? (entry.duration ? `${entry.duration}s` : "") : (entry.aspect_ratio || "");
     const media = isVideo
       ? `<video src="${entry.url}" muted preload="metadata"></video><div class="gallery-video-badge">&#9654;</div>`
@@ -5115,7 +5415,11 @@ galleryGrid.addEventListener("click", async (e) => {
   const img = e.target.closest(".gallery-item a img");
   if (img && e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
     e.preventDefault();
-    openLightbox(img.src);
+    // Videos render as <video>, not <img>, so this selector already only
+    // ever matches images — no separate filter needed for the nav list.
+    const navEntries = getFilteredGalleryEntries().filter(en => en.mode !== "video");
+    const navIndex = navEntries.findIndex(en => en.url === img.getAttribute("src"));
+    openLightbox(img.src, navEntries, navIndex);
     return;
   }
   const loadMoreBtn = e.target.closest(".gallery-load-more");
@@ -5271,20 +5575,22 @@ async function runComfyUIJob(job) {
     if (!baseUrl) throw new Error("Set the ComfyUI server URL first.");
     // job.sourceImageUrl (Story tab — the scene already has a saved image
     // URL, no re-upload needed) or job.sourceImages[0] (Video tab — a
-    // freshly-attached upload).
-    if (!job.sourceImageUrl && !job.sourceImages?.length) throw new Error("ComfyUI (LTX 2.3) needs a source image.");
-    updateJob(job.id, { statusText: "Uploading image to ComfyUI..." });
+    // freshly-attached upload). Neither is required — this workflow
+    // supports text-to-video too (see the "290" t2v_mode node in
+    // build_comfyui_ltx_prompt(), proxy.py).
+    const [width, height] = comfyuiResolutionEl.value.split("x").map(Number);
+    updateJob(job.id, { statusText: job.sourceImageUrl || job.sourceImages?.length ? "Uploading image to ComfyUI..." : "Queuing on ComfyUI..." });
     const res = await fetch("/api/comfyui-queue", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         baseUrl,
-        imageBase64: job.sourceImageUrl ? undefined : job.sourceImages[0].base64,
+        imageBase64: job.sourceImageUrl ? undefined : job.sourceImages?.[0]?.base64,
         imageUrl: job.sourceImageUrl || undefined,
         prompt: job.prompt,
         seconds: Number(job.duration),
-        shortSide: Number(comfyuiShortSideEl.value),
-        scaleMode: comfyuiScaleModeEl.value,
+        width,
+        height,
       }),
     });
     const data = await res.json();
@@ -5301,9 +5607,13 @@ async function runComfyUIJob(job) {
 }
 
 async function pollComfyUIJob(baseUrl, promptId, jobId) {
-  const maxAttempts = 240; // ~ at 3s interval -> 12 min max — local video generation can be slow depending on hardware
+  // This workflow (LTX 2.3, two-pass base+upscale) typically takes 5-10 min
+  // per generation on local hardware — a slower poll interval than the
+  // generic kie.ai one above, so it doesn't hammer the ComfyUI server
+  // while a single job is known to run long.
+  const maxAttempts = 160; // ~ at 15s interval -> 40 min max
   for (let i = 0; i < maxAttempts; i++) {
-    await new Promise(r => setTimeout(r, 3000));
+    await new Promise(r => setTimeout(r, 15000));
     const res = await fetch(`/api/comfyui-status?baseUrl=${encodeURIComponent(baseUrl)}&promptId=${encodeURIComponent(promptId)}`);
     const data = await res.json();
     if (data.status === "done") return data.viewUrl;
@@ -5318,28 +5628,27 @@ async function loadComfyUIConfig() {
     const res = await fetch("/api/comfyui-config");
     const data = await res.json();
     comfyuiServerUrlEl.value = data.baseUrl || "";
-    comfyuiShortSideEl.value = String(data.shortSide || 540);
-    comfyuiScaleModeEl.value = data.scaleMode || "shorter";
+    comfyuiResolutionEl.value = `${data.width || 432}x${data.height || 768}`;
   } catch (err) {
     // fail silently; the fields just stay at their defaults and the user can set them
   }
 }
 
 function saveComfyUIConfig() {
+  const [width, height] = comfyuiResolutionEl.value.split("x").map(Number);
   fetch("/api/comfyui-config", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       baseUrl: comfyuiServerUrlEl.value.trim(),
-      shortSide: Number(comfyuiShortSideEl.value),
-      scaleMode: comfyuiScaleModeEl.value,
+      width,
+      height,
     }),
   }).catch(() => {}); // fail silently — worst case it's just not remembered on refresh
 }
 
 comfyuiServerUrlEl.addEventListener("change", saveComfyUIConfig);
-comfyuiShortSideEl.addEventListener("change", saveComfyUIConfig);
-comfyuiScaleModeEl.addEventListener("change", saveComfyUIConfig);
+comfyuiResolutionEl.addEventListener("change", saveComfyUIConfig);
 
 generateBtn.addEventListener("click", () => {
   setStatus("");
@@ -5460,11 +5769,14 @@ videoFeelingLuckyBtn.addEventListener("click", async () => {
   try {
     const brief = videoPromptEl.value.trim()
       || "Look at the attached image(s) and invent a compelling, natural motion for this clip yourself — pick whatever fits what's actually shown.";
+    // Same reasoning as the embedded assistant's handler above — tell Grok
+    // the actual clip length so it can pace the motion description to it.
+    const briefForApi = `${brief}\n\n(Clip length: ${getVideoDuration()} seconds.)`;
     const res = await fetch("/api/generate-prompt", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        brief,
+        brief: briefForApi,
         mode: currentAssistantMode(),
         images: videoImages.map(img => img.base64),
         history: [],

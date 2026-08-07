@@ -243,12 +243,21 @@ permanently.
 
 Click a gallery image (or a Story scene image) to open it in the shared
 **lightbox**: it opens fit-to-screen; click the image itself to switch
-to native pixel size (scrollable if it's bigger than your screen), and
-click again to switch back — the image toggles between the two sizes
-rather than closing. To close the lightbox, click anywhere outside the
-image, press Escape, or click the × in the corner. Right-click an image
-still gives you the normal "open in new tab"/"save image as" browser
-menu, untouched.
+to native pixel size (bigger than your screen for a high-res image),
+and click again to switch back — the image toggles between the two
+sizes rather than closing. At native size, click-and-drag pans around
+the image instead of relying on scrollbars — a plain click (no
+movement) still toggles back to fit-to-screen. From the Gallery, the
+**Left/Right arrow keys** step to the previous/next image (wrapping
+around at both ends) within whatever the search/model/favorites filters
+currently show — opening from the Story tab's scene grid instead is
+single-image only, arrow keys do nothing there. A **★ button** in the
+corner favorites/unfavorites the image currently shown — same one as
+the Gallery grid's, kept in sync with it — and is hidden if the image
+doesn't correspond to any gallery entry. To close the lightbox, click
+anywhere outside the image, press Escape, or click the × in the
+corner. Right-click an image still gives you the normal "open in new
+tab"/"save image as" browser menu, untouched.
 
 ---
 
@@ -511,6 +520,16 @@ same `/api/generate-prompt` endpoint and system prompts as the regular
 assistant — "Feeling Lucky" is just a shortcut that calls it once with
 a synthetic brief (when yours is empty) and skips straight to
 `Generate video` with the result.
+
+**Duration awareness**: both the embedded assistant and "Feeling Lucky"
+append the currently-selected clip length to what's sent to Grok (e.g.
+"Clip length: 10 seconds.") — this doesn't show up in the conversation
+you see, only in what's actually sent — so the motion it writes is
+paced to fit, the same way the Story tab's scene video prompts already
+were. `VIDEO_LTX_MOTION_SYSTEM`/`STORY_LTX_MOTION_SYSTEM` go a step
+further and give Grok an explicit pacing table for 5s/10s/15-20s clips;
+the other video models' system prompts just get the number, without a
+matching tiered breakdown.
 
 ---
 
@@ -1145,11 +1164,13 @@ further below for why that was removed).
    scene image to open it in a lightbox** — a near-fullscreen overlay
    with a small pop/fade-in so the transition is visible, not an
    instant jump, fit to your screen by default. Click the image itself
-   to toggle to its native pixel size (scrolls if that's bigger than
-   your screen) and back — this does not close it. Close the lightbox
-   by clicking the dimmed background, pressing **Escape**, or clicking
-   the **×** in the corner — the same lightbox is also used for the
-   **Gallery** (click any gallery image; right-click still offers "open
+   to toggle to its native pixel size (bigger than your screen for a
+   high-res image) and back — this does not close it; at native size,
+   click-and-drag pans around the image instead of relying on
+   scrollbars. Close the lightbox by clicking the dimmed background,
+   pressing **Escape**, or clicking the **×** in the corner — the same
+   lightbox is also used for the **Gallery** (click any gallery image;
+   right-click still offers "open
    in new tab"/"save image as" normally, since that's the underlying
    link's own browser behavior, untouched). The story's title, shown
    above the grid, is an **editable text
@@ -1262,6 +1283,29 @@ further below for why that was removed).
      server — capped at 512P, and only 6s or 10s (the model itself
      doesn't accept any other duration). Reuses `SEEDANCE_I2V_SYSTEM`
      too.
+
+   **"▶ Generate all videos"** (below "Generate all scenes") is the
+   same idea, one step later: animates every scene that already has a
+   generated image and doesn't already have a finished video, in order,
+   waiting for each clip to finish before starting the next, using
+   whichever engine is currently selected above. Right above the
+   button, its own **Duration** and (for models that actually have more
+   than one tier — Grok Imagine Video and Hailuo 02) **Resolution**
+   pickers apply to every clip in that run, overriding each scene's own
+   duration; this is separate from the per-scene duration dropdown next
+   to the individual "🎬 Video" button, which is unaffected. Scenes
+   without an image yet are skipped (run "Generate all scenes" first,
+   or generate that one by hand) rather than blocking the whole run —
+   the status line says how many were skipped. Same **"⏹ Stop"**
+   behavior as the image version: ends the run after the clip currently
+   in progress finishes. Picking "ComfyUI — LTX 2.3" with no server URL
+   set fails immediately with a clear message instead of quietly
+   skipping every scene one by one — LTX's resolution is the Video
+   tab's own ComfyUI short-side/scale-mode setting (section 7b), not a
+   per-run field here. Clicking the button asks for confirmation first
+   ("Generate N videos with [engine] (Xs, Yp)? ... Are you sure?")
+   before queuing anything, since it can kick off several paid clips at
+   once — nothing starts until you confirm.
 
    Either way, the scene's image, its narration, the next scene's
    narration (for context — what this clip should move toward without

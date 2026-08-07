@@ -64,16 +64,20 @@ STORIES_META_FILE = HERE / "stories.json"
 COMFYUI_CONFIG_FILE = HERE / "comfyui_config.json"
 COMFYUI_WORKFLOW_FILE = HERE / "comfyui_workflows" / "ltx-2.3.json"
 # Node IDs are specific to this exact exported workflow (comfyui_workflows/
-# ltx-2.3.json) — they'd need updating if the workflow is ever re-exported
-# with different node IDs.
-COMFYUI_LTX_IMAGE_NODE = "5309:5307"     # LoadImage.inputs.image
-COMFYUI_LTX_PROMPT_NODE = "5311:5403"    # CLIPTextEncode.inputs.text
-COMFYUI_LTX_FRAMES_NODE = "5311:4988"    # PrimitiveInt ("number of frames").inputs.value
-COMFYUI_LTX_SEED_NODE = "5314:5392"      # SeedNode.inputs.seed
-COMFYUI_LTX_OUTPUT_NODE = "5363"         # VHS_VideoCombine — where the finished video shows up in /history
-COMFYUI_LTX_RESIZE_NODE = "5309:5308"    # UnifiedResizeImageMask — scale_mode + short_side_target/long_side_target, see build_comfyui_ltx_prompt()
-COMFYUI_LTX_FPS = 24                     # matches the workflow's fixed "fps" PrimitiveFloat (5311:4989)
-COMFYUI_LTX_RESOLUTIONS = (540, 720, 1080)  # allowed shorter/longer-side values, exposed in the UI
+# ltx-2.3.json — currently "PinkCherry LTX 2.3 v18", a custom finetune) —
+# they'd need updating if the workflow is ever re-exported with different
+# node IDs. Unlike the previous workflow, this one computes its own frame
+# count from a "length in seconds" value + fps via an in-graph calculator
+# node, and takes width/height directly (no shorter/longer-side resize
+# logic) — so build_comfyui_ltx_prompt() has correspondingly less to do.
+COMFYUI_LTX_IMAGE_NODE = "167"       # LoadImage.inputs.image
+COMFYUI_LTX_PROMPT_NODE = "352"      # PrimitiveStringMultiline ("Positive Prompt").inputs.value
+COMFYUI_LTX_LENGTH_NODE = "291"      # INTConstant ("LENGTH (in seconds)").inputs.value — the graph itself converts this to a frame count
+COMFYUI_LTX_SEED_NODES = ("114", "115")  # RandomNoise (base pass + upscale pass).inputs.noise_seed — both set to the same fresh seed each generation
+COMFYUI_LTX_WIDTH_NODE = "292"       # INTConstant ("WIDTH").inputs.value
+COMFYUI_LTX_HEIGHT_NODE = "293"      # INTConstant ("HEIGHT").inputs.value
+COMFYUI_LTX_OUTPUT_NODE = "140"      # VHS_VideoCombine — where the finished video shows up in /history
+COMFYUI_LTX_T2V_NODE = "290"         # PrimitiveBoolean ("Text To Video (no image ref)").inputs.value
 
 # App-wide settings (Options panel — see load_app_config()/save_app_config()):
 # which image/video models are enabled, and editable overrides for the
@@ -2635,7 +2639,7 @@ def reset_cost_totals() -> dict:
 
 
 def load_comfyui_config() -> dict:
-    default = {"baseUrl": "", "shortSide": 540, "scaleMode": "shorter"}
+    default = {"baseUrl": "", "width": 432, "height": 768}
     if not COMFYUI_CONFIG_FILE.exists():
         return default
     try:
@@ -2644,12 +2648,12 @@ def load_comfyui_config() -> dict:
         return default
 
 
-def save_comfyui_config(base_url: str, short_side: int = 540, scale_mode: str = "shorter") -> dict:
-    if short_side not in COMFYUI_LTX_RESOLUTIONS:
-        short_side = 540
-    if scale_mode not in ("shorter", "longer"):
-        scale_mode = "shorter"
-    config = {"baseUrl": base_url.strip(), "shortSide": short_side, "scaleMode": scale_mode}
+def save_comfyui_config(base_url: str, width: int = 432, height: int = 768) -> dict:
+    config = {
+        "baseUrl": base_url.strip(),
+        "width": max(64, min(2048, int(width))),
+        "height": max(64, min(2048, int(height))),
+    }
     COMFYUI_CONFIG_FILE.write_text(json.dumps(config, indent=2), encoding="utf-8")
     return config
 
@@ -2659,36 +2663,63 @@ def load_comfyui_workflow() -> dict:
 
 
 def build_comfyui_ltx_prompt(
-    image_filename: str, prompt_text: str, seconds: int, short_side: int = 540, scale_mode: str = "shorter",
+    image_filename: str, prompt_text: str, seconds: int, width: int, height: int, text_to_video: bool,
 ) -> dict:
     """Clones the LTX 2.3 workflow template and injects the per-generation
     values: the source image (already uploaded to ComfyUI's input folder —
-    see comfyui_upload_image()), the prompt text, the frame count, a fresh
-    random seed, and the output resolution. Frame count follows this
-    workflow's own convention (its "number of frames" node defaults to 481,
-    which is exactly 20s * 24fps + 1 — LTX's temporal VAE needs an odd frame
-    count), so `seconds * COMFYUI_LTX_FPS + 1` matches it for any of the
-    5/10/15/20s options the UI offers. The resize node (UnifiedResizeImageMask)
-    supports targeting either the shorter or longer side via its own
-    `scale_mode` field ("Shorter Side" / "Longer Side" — inferred from the
-    node's naming convention, not independently verified against a live
-    server; if wrong, this is the one string to fix) plus a matching
-    `short_side_target`/`long_side_target` value — `scale_mode` picks which
-    one this sets `short_side` into; the other side always follows from the
-    source image's own aspect ratio. Everything else in the workflow — LoRA
-    stack, sampler settings — is left completely untouched."""
+    see comfyui_upload_image() — a placeholder for pure text-to-video, see
+    make_placeholder_png()), the prompt text, the clip length in seconds, a
+    fresh random seed, and the target width/height. Frame count is NOT
+    computed here — the workflow itself converts "length in seconds" + its
+    fixed fps into a frame count via an in-graph calculator node, so any
+    seconds value works, not just a fixed set of presets. Width/height are
+    set directly (no shorter/longer-side logic needed — this workflow's own
+    resize node handles fitting the source image to that canvas, snapped to
+    a multiple of 32 — and it's also what determines the output canvas size
+    for pure text-to-video, via the placeholder image). The seed is written
+    to both RandomNoise nodes (base pass + upscale pass) so they stay in
+    sync. text_to_video toggles the workflow's own "Text To Video (no image
+    ref)" switch, which bypasses the image-injection step entirely — the
+    placeholder image's actual pixel content is never used in that case,
+    only its dimensions (via the resize chain) feed the empty-latent size.
+    Everything else in the workflow — LoRA, sampler settings, negative
+    prompts — is left completely untouched."""
     workflow = load_comfyui_workflow()
     workflow[COMFYUI_LTX_IMAGE_NODE]["inputs"]["image"] = image_filename
-    workflow[COMFYUI_LTX_PROMPT_NODE]["inputs"]["text"] = prompt_text
-    workflow[COMFYUI_LTX_FRAMES_NODE]["inputs"]["value"] = seconds * COMFYUI_LTX_FPS + 1
-    workflow[COMFYUI_LTX_SEED_NODE]["inputs"]["seed"] = uuid.uuid4().int & 0xFFFFFFFFFFFF
-    if scale_mode == "longer":
-        workflow[COMFYUI_LTX_RESIZE_NODE]["inputs"]["scale_mode"] = "Longer Side"
-        workflow[COMFYUI_LTX_RESIZE_NODE]["inputs"]["long_side_target"] = short_side
-    else:
-        workflow[COMFYUI_LTX_RESIZE_NODE]["inputs"]["scale_mode"] = "Shorter Side"
-        workflow[COMFYUI_LTX_RESIZE_NODE]["inputs"]["short_side_target"] = short_side
+    workflow[COMFYUI_LTX_PROMPT_NODE]["inputs"]["value"] = prompt_text
+    workflow[COMFYUI_LTX_LENGTH_NODE]["inputs"]["value"] = seconds
+    workflow[COMFYUI_LTX_WIDTH_NODE]["inputs"]["value"] = width
+    workflow[COMFYUI_LTX_HEIGHT_NODE]["inputs"]["value"] = height
+    workflow[COMFYUI_LTX_T2V_NODE]["inputs"]["value"] = bool(text_to_video)
+    seed = uuid.uuid4().int & 0xFFFFFFFFFFFF
+    for seed_node in COMFYUI_LTX_SEED_NODES:
+        workflow[seed_node]["inputs"]["noise_seed"] = seed
     return workflow
+
+
+def make_placeholder_png(width: int, height: int) -> bytes:
+    """Builds a minimal solid-grey PNG from scratch (stdlib zlib + struct
+    only, no imaging library) for pure text-to-video generations — the
+    workflow's LoadImage node always needs a real file even when
+    "Text To Video (no image ref)" is on, since the resize/GetImageSize
+    chain that determines the actual output canvas size runs unconditionally
+    (only the image *content* injection is bypassed). Pixel content is
+    never seen by the model in that mode, so a flat color is enough."""
+    import struct
+    import zlib
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data))
+
+    row = bytes((128, 128, 128)) * width  # mid-grey RGB
+    raw = b"".join(b"\x00" + row for _ in range(height))  # filter byte 0 (None) per scanline
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)  # 8-bit truecolor RGB
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", ihdr)
+        + chunk(b"IDAT", zlib.compress(raw, 6))
+        + chunk(b"IEND", b"")
+    )
 
 
 def comfyui_upload_image(base_url: str, image_bytes: bytes, content_type: str, filename: str) -> str:
@@ -2791,12 +2822,21 @@ def local_or_remote_to_data_url(url: str) -> str:
 
 
 def load_gallery() -> list:
+    """Loads gallery.json and self-heals it: any entry whose underlying file
+    in outputs/ no longer exists (e.g. the user deleted it by hand in
+    Explorer, outside the app) is dropped and the pruned list is written
+    back — so a manually-deleted file's metadata doesn't linger forever as
+    a broken thumbnail."""
     if not GALLERY_META_FILE.exists():
         return []
     try:
-        return json.loads(GALLERY_META_FILE.read_text(encoding="utf-8"))
+        entries = json.loads(GALLERY_META_FILE.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return []
+    kept = [e for e in entries if e.get("filename") and (OUTPUT_DIR / e["filename"]).is_file()]
+    if len(kept) != len(entries):
+        save_gallery(kept)
+    return kept
 
 
 def save_gallery(entries: list) -> None:
@@ -3319,7 +3359,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 body = self._read_json_body()
                 config = save_comfyui_config(
-                    body.get("baseUrl", ""), int(body.get("shortSide", 540)), body.get("scaleMode", "shorter"),
+                    body.get("baseUrl", ""), int(body.get("width", 432)), int(body.get("height", 768)),
                 )
                 self._send_json(200, config)
             except Exception as e:
@@ -3336,31 +3376,41 @@ class Handler(BaseHTTPRequestHandler):
                 image_url = (body.get("imageUrl") or "").strip()
                 prompt_text = body.get("prompt", "")
                 seconds = int(body.get("seconds", 5))
-                short_side = int(body.get("shortSide", 540))
-                scale_mode = body.get("scaleMode", "shorter")
-                if scale_mode not in ("shorter", "longer"):
-                    raise RuntimeError("scaleMode must be 'shorter' or 'longer'.")
+                width = int(body.get("width", 432))
+                height = int(body.get("height", 768))
                 if not base_url:
                     raise RuntimeError("Set the ComfyUI server URL first.")
-                if not base64_data and not image_url:
-                    raise RuntimeError("Missing source image.")
-                if seconds not in (5, 10, 15, 20):
-                    raise RuntimeError("Duration must be 5, 10, 15, or 20 seconds.")
-                if short_side not in COMFYUI_LTX_RESOLUTIONS:
-                    raise RuntimeError(f"Resolution must be one of {COMFYUI_LTX_RESOLUTIONS}.")
-                if image_url:
+                if not (1 <= seconds <= 60):
+                    raise RuntimeError("Duration must be between 1 and 60 seconds.")
+                if not (64 <= width <= 2048) or not (64 <= height <= 2048):
+                    raise RuntimeError("Width/height must be between 64 and 2048.")
+                text_to_video = not base64_data and not image_url
+                if text_to_video:
+                    # This workflow's LoadImage node needs a real file even
+                    # in text-to-video mode (see build_comfyui_ltx_prompt())
+                    # — only its pixel content is skipped, not its role in
+                    # sizing the output canvas.
+                    image_bytes = make_placeholder_png(width, height)
+                    content_type = "image/png"
+                    ext = ".png"
+                elif image_url:
                     # Used by the Story tab, which already has a saved scene
                     # image URL rather than a fresh upload — avoids the
                     # client having to re-fetch and base64-encode it itself.
                     data_url = local_or_remote_to_data_url(image_url)
                     header, _, encoded = data_url.partition(",")
+                    content_type = "image/png"
+                    if header.startswith("data:") and ";" in header:
+                        content_type = header[5:].split(";")[0] or "image/png"
+                    image_bytes = base64.b64decode(encoded or header)
+                    ext = mimetypes.guess_extension(content_type) or ".png"
                 else:
                     header, _, encoded = base64_data.partition(",")
-                content_type = "image/png"
-                if header.startswith("data:") and ";" in header:
-                    content_type = header[5:].split(";")[0] or "image/png"
-                image_bytes = base64.b64decode(encoded or header)
-                ext = mimetypes.guess_extension(content_type) or ".png"
+                    content_type = "image/png"
+                    if header.startswith("data:") and ";" in header:
+                        content_type = header[5:].split(";")[0] or "image/png"
+                    image_bytes = base64.b64decode(encoded or header)
+                    ext = mimetypes.guess_extension(content_type) or ".png"
                 # A unique filename per upload is essential, not cosmetic:
                 # ComfyUI's LoadImage node reads the file from disk at
                 # EXECUTION time, not at upload/queue time. With a static
@@ -3372,7 +3422,9 @@ class Handler(BaseHTTPRequestHandler):
                 uploaded_filename = comfyui_upload_image(
                     base_url, image_bytes, content_type, f"upload_{uuid.uuid4().hex[:16]}{ext}"
                 )
-                workflow = build_comfyui_ltx_prompt(uploaded_filename, prompt_text, seconds, short_side, scale_mode)
+                workflow = build_comfyui_ltx_prompt(
+                    uploaded_filename, prompt_text, seconds, width, height, text_to_video,
+                )
                 prompt_id = comfyui_queue_prompt(base_url, workflow)
                 self._send_json(200, {"promptId": prompt_id})
             except Exception as e:
